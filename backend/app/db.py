@@ -3,6 +3,11 @@ from flask_sqlalchemy import SQLAlchemy
 
 db = SQLAlchemy()
 
+photo_tags = db.Table('photo_tags',
+    db.Column('photo_id', db.Integer, db.ForeignKey('photo.id', ondelete='CASCADE'), primary_key=True),
+    db.Column('tag_id', db.Integer, db.ForeignKey('tag.id', ondelete='CASCADE'), primary_key=True)
+)
+
 class Album(db.Model):
     """相册模型"""
     id = db.Column(db.Integer, primary_key=True)
@@ -18,3 +23,10 @@ class Photo(db.Model):
     original_filename = db.Column(db.String(100), nullable=False) # 原始文件名
     album_id = db.Column(db.Integer, db.ForeignKey('album.id'), nullable=False) # 所属相册 ID
     uploaded_at = db.Column(db.DateTime, default=datetime.utcnow) # 上传时间 (UTC)
+    tags = db.relationship('Tag', secondary=photo_tags, backref=db.backref('photos', lazy='dynamic'), lazy='dynamic')
+
+class Tag(db.Model):
+    """标签模型"""
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(50), nullable=False, unique=True) # 标签名称 (唯一)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow) # 创建时间 (UTC)

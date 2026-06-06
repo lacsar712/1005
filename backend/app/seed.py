@@ -1,5 +1,5 @@
 from .app import create_app
-from .db import db, Album, Photo
+from .db import db, Album, Photo, Tag
 import datetime
 
 def seed():

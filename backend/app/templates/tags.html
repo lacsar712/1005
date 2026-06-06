@@ -1,0 +1,114 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="mb-8">
+    <div class="flex items-center text-sm text-gray-500 mb-4">
+        <a href="{{ url_for('index') }}" class="hover:text-primary transition flex items-center">
+            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+            返回首页
+        </a>
+    </div>
+    <h1 class="text-3xl font-bold text-gray-900 mb-2">标签管理</h1>
+    <p class="text-gray-500">创建、编辑和管理所有照片标签</p>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+    <div class="lg:col-span-1">
+        <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100 sticky top-24">
+            <h2 class="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                <svg class="w-5 h-5 mr-2 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                新建标签
+            </h2>
+            <form method="POST" action="{{ url_for('manage_tags') }}" onsubmit="return handleFormSubmit(this)">
+                <div class="mb-4">
+                    <label for="name" class="block text-sm font-medium text-gray-700 mb-1">标签名称</label>
+                    <input type="text" name="name" id="name" required maxlength="50" placeholder="例如：风景、人像"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition">
+                </div>
+                <button type="submit" class="w-full bg-primary hover:bg-blue-600 text-white py-2.5 rounded-lg shadow-sm transition flex items-center justify-center">
+                    <svg class="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path></svg>
+                    创建标签
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <div class="lg:col-span-2">
+        {% if tags %}
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                <div class="px-6 py-4 border-b border-gray-100">
+                    <h2 class="text-lg font-semibold text-gray-900">所有标签 ({{ tags|length }})</h2>
+                </div>
+                <div class="divide-y divide-gray-50">
+                    {% for tag in tags %}
+                    <div class="px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition group">
+                        <div class="flex items-center space-x-4">
+                            <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                                <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path></svg>
+                                {{ tag.name }}
+                            </span>
+                            <a href="{{ url_for('view_tag', tag_id=tag.id) }}" class="text-sm text-gray-500 hover:text-primary transition">
+                                {{ tag_photo_counts.get(tag.id, 0) }} 张照片
+                            </a>
+                        </div>
+                        <div class="flex items-center space-x-2 opacity-0 group-hover:opacity-100 transition">
+                            <button onclick="openRenameModal({{ tag.id }}, '{{ tag.name }}')" class="p-2 text-gray-400 hover:text-primary hover:bg-blue-50 rounded-lg transition" title="重命名">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                            </button>
+                            <a href="javascript:void(0)" onclick="return confirmDelete('删除标签？', '标签「{{ tag.name }}」将被删除，但相关照片不会被移除。', '{{ url_for('delete_tag', tag_id=tag.id) }}')" class="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition" title="删除">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                            </a>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        {% else %}
+            <div class="text-center py-20 bg-white rounded-xl shadow-sm border border-gray-100">
+                <svg class="w-16 h-16 text-gray-200 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path></svg>
+                <p class="text-lg text-gray-500 mb-2">还没有任何标签</p>
+                <p class="text-sm text-gray-400">在左侧创建第一个标签吧</p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+    function openRenameModal(tagId, currentName) {
+        Swal.fire({
+            title: '重命名标签',
+            input: 'text',
+            inputLabel: '新的标签名称',
+            inputValue: currentName,
+            inputPlaceholder: '请输入新名称',
+            inputAttributes: {
+                maxlength: 50,
+                required: true
+            },
+            showCancelButton: true,
+            confirmButtonText: '保存',
+            cancelButtonText: '取消',
+            confirmButtonColor: '#3b82f6',
+            cancelButtonColor: '#6b7280',
+            inputValidator: (value) => {
+                if (!value || !value.trim()) {
+                    return '标签名称不能为空';
+                }
+            }
+        }).then((result) => {
+            if (result.isConfirmed) {
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = `/admin/tag/rename/${tagId}`;
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'name';
+                input.value = result.value.trim();
+                form.appendChild(input);
+                document.body.appendChild(form);
+                form.submit();
+            }
+        });
+    }
+</script>
+{% endblock %}

@@ -3,7 +3,7 @@ import uuid
 from flask import Flask, render_template, request, redirect, url_for, flash, abort, send_from_directory
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.utils import secure_filename
-from .db import db, Album, Photo
+from .db import db, Album, Photo, Tag
 
 # 常量设置
 UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static/uploads')
@@ -58,13 +58,15 @@ def create_app():
     def index():
         """相册列表页"""
         albums = Album.query.order_by(Album.created_at.desc()).all()
-        return render_template('index.html', albums=albums)
+        tags = Tag.query.order_by(Tag.name).all()
+        return render_template('index.html', albums=albums, tags=tags)
 
     @app.route('/album/<int:album_id>')
     def album_detail(album_id):
         """相册详情页"""
         album = Album.query.get_or_404(album_id)
-        return render_template('album.html', album=album)
+        all_tags = Tag.query.order_by(Tag.name).all()
+        return render_template('album.html', album=album, all_tags=all_tags)
 
     @app.route('/admin/login', methods=['GET', 'POST'])
     def login():
@@ -182,6 +184,94 @@ def create_app():
         db.session.commit()
         flash('图片已删除', 'success')
         return redirect(url_for('album_detail', album_id=album_id))
+
+    # --- 标签管理路由 ---
+
+    @app.route('/tags')
+    def browse_tags():
+        """浏览所有标签（首页入口）"""
+        tags = Tag.query.order_by(Tag.name).all()
+        tag_photo_counts = {}
+        for tag in tags:
+            tag_photo_counts[tag.id] = tag.photos.count()
+        return render_template('tag_browse.html', tags=tags, tag_photo_counts=tag_photo_counts)
+
+    @app.route('/tag/<int:tag_id>')
+    def view_tag(tag_id):
+        """查看指定标签下的所有照片"""
+        tag = Tag.query.get_or_404(tag_id)
+        photos = tag.photos.all()
+        photo_data = []
+        for photo in photos:
+            photo_data.append({
+                'photo': photo,
+                'album': Album.query.get(photo.album_id)
+            })
+        all_tags = Tag.query.order_by(Tag.name).all()
+        return render_template('tag_browse.html', tags=all_tags, current_tag=tag, photo_data=photo_data, tag_photo_counts={t.id: t.photos.count() for t in all_tags})
+
+    @app.route('/admin/tags', methods=['GET', 'POST'])
+    @login_required
+    def manage_tags():
+        """标签管理页面 - 创建、查看标签"""
+        if request.method == 'POST':
+            name = request.form.get('name', '').strip()
+            if not name:
+                flash('标签名称不能为空', 'error')
+            elif Tag.query.filter_by(name=name).first():
+                flash('标签名称已存在，请使用其他名称', 'error')
+            else:
+                new_tag = Tag(name=name)
+                db.session.add(new_tag)
+                db.session.commit()
+                flash(f'标签「{name}」创建成功', 'success')
+            return redirect(url_for('manage_tags'))
+        tags = Tag.query.order_by(Tag.created_at.desc()).all()
+        tag_photo_counts = {}
+        for tag in tags:
+            tag_photo_counts[tag.id] = tag.photos.count()
+        return render_template('tags.html', tags=tags, tag_photo_counts=tag_photo_counts)
+
+    @app.route('/admin/tag/rename/<int:tag_id>', methods=['POST'])
+    @login_required
+    def rename_tag(tag_id):
+        """重命名标签"""
+        tag = Tag.query.get_or_404(tag_id)
+        new_name = request.form.get('name', '').strip()
+        if not new_name:
+            flash('标签名称不能为空', 'error')
+        elif Tag.query.filter(Tag.name == new_name, Tag.id != tag_id).first():
+            flash('标签名称已存在，请使用其他名称', 'error')
+        else:
+            old_name = tag.name
+            tag.name = new_name
+            db.session.commit()
+            flash(f'标签已从「{old_name}」重命名为「{new_name}」', 'success')
+        return redirect(url_for('manage_tags'))
+
+    @app.route('/admin/tag/delete/<int:tag_id>')
+    @login_required
+    def delete_tag(tag_id):
+        """删除标签（仅解除关联，不删除照片）"""
+        tag = Tag.query.get_or_404(tag_id)
+        tag_name = tag.name
+        db.session.delete(tag)
+        db.session.commit()
+        flash(f'标签「{tag_name}」已删除（关联照片未受影响）', 'success')
+        return redirect(url_for('manage_tags'))
+
+    @app.route('/photo/<int:photo_id>/tags', methods=['POST'])
+    @login_required
+    def set_photo_tags(photo_id):
+        """为照片设置标签"""
+        photo = Photo.query.get_or_404(photo_id)
+        tag_ids = request.form.getlist('tag_ids')
+        tag_ids = [int(tid) for tid in tag_ids if tid.isdigit()]
+        selected_tags = Tag.query.filter(Tag.id.in_(tag_ids)).all() if tag_ids else []
+        photo.tags = selected_tags
+        db.session.commit()
+        flash('标签已更新', 'success')
+        return redirect(url_for('album_detail', album_id=photo.album_id))
 
     return app
 

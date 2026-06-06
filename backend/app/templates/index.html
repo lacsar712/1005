@@ -11,6 +11,35 @@
     {% endif %}
 </div>
 
+{% if tags %}
+<div class="mb-10">
+    <div class="flex items-center justify-between mb-4">
+        <h2 class="text-xl font-semibold text-gray-800 flex items-center">
+            <svg class="w-5 h-5 mr-2 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path></svg>
+            按标签浏览
+        </h2>
+        <a href="{{ url_for('browse_tags') }}" class="text-sm text-primary hover:text-blue-700 transition flex items-center">
+            查看全部
+            <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+        </a>
+    </div>
+    <div class="flex flex-wrap gap-2">
+        {% for tag in tags[:15] %}
+            <a href="{{ url_for('view_tag', tag_id=tag.id) }}" class="inline-flex items-center px-3 py-1.5 rounded-full text-sm bg-white text-gray-700 hover:bg-blue-50 hover:text-blue-700 border border-gray-200 hover:border-blue-200 shadow-sm transition group">
+                <svg class="w-3.5 h-3.5 mr-1.5 text-gray-400 group-hover:text-primary transition" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path></svg>
+                {{ tag.name }}
+                <span class="ml-1.5 text-xs text-gray-400">({{ tag.photos.count() }})</span>
+            </a>
+        {% endfor %}
+        {% if tags|length > 15 %}
+            <a href="{{ url_for('browse_tags') }}" class="inline-flex items-center px-3 py-1.5 rounded-full text-sm text-gray-500 hover:text-primary transition">
+                +{{ tags|length - 15 }} 更多
+            </a>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
 {% if albums %}
     <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
         {% for album in albums %}

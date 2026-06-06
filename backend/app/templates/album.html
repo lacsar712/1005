@@ -34,19 +34,35 @@
     <!-- Added ID for Viewer.js -->
     <div id="gallery" class="columns-1 sm:columns-2 md:columns-3 lg:columns-4 gap-4 space-y-4">
         {% for photo in album.photos %}
+        {% set photo_tag_ids = photo.tags.all() | map(attribute='id') | list %}
         <div class="break-inside-avoid relative group rounded-lg overflow-hidden shadow-sm hover:shadow-lg transition">
             <!-- Image for Viewer.js (cursor-zoom-in) -->
             <img src="{{ url_for('static', filename='uploads/' + photo.filename) }}" 
                  alt="{{ photo.original_filename }}" 
                  class="w-full h-auto object-cover rounded-lg cursor-zoom-in">
             
+            {% if photo.tags.count() > 0 %}
+            <div class="absolute top-2 left-2 flex flex-wrap gap-1 max-w-[90%]">
+                {% for tag in photo.tags.all() %}
+                <a href="{{ url_for('view_tag', tag_id=tag.id) }}" class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-500/90 text-white backdrop-blur-sm hover:bg-blue-600 transition">
+                    {{ tag.name }}
+                </a>
+                {% endfor %}
+            </div>
+            {% endif %}
+
             <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-4 opacity-0 group-hover:opacity-100 transition duration-300 flex justify-between items-end pointer-events-none">
-                <span class="text-white text-xs truncate max-w-[70%]">{{ photo.original_filename }}</span>
-                {% if current_user.is_authenticated %}
-                    <a href="javascript:void(0)" onclick="return confirmDelete('删除照片？', '这张照片将被永久删除且无法找回。', '{{ url_for('delete_photo', photo_id=photo.id) }}')" class="pointer-events-auto text-red-300 hover:text-red-100 bg-red-900/50 hover:bg-red-900/80 p-1.5 rounded transition">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                    </a>
-                {% endif %}
+                <span class="text-white text-xs truncate max-w-[50%]">{{ photo.original_filename }}</span>
+                <div class="flex items-center space-x-2 pointer-events-auto">
+                    {% if current_user.is_authenticated %}
+                        <button onclick="openTagModal({{ photo.id }}, [{% for tid in photo_tag_ids %}{{ tid }}{% if not loop.last %},{% endif %}{% endfor %}])" class="text-white/90 hover:text-white bg-white/10 hover:bg-white/20 backdrop-blur-sm p-1.5 rounded transition" title="打标签">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path></svg>
+                        </button>
+                        <a href="javascript:void(0)" onclick="return confirmDelete('删除照片？', '这张照片将被永久删除且无法找回。', '{{ url_for('delete_photo', photo_id=photo.id) }}')" class="text-red-300 hover:text-red-100 bg-red-900/50 hover:bg-red-900/80 p-1.5 rounded transition">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                        </a>
+                    {% endif %}
+                </div>
             </div>
         </div>
         {% endfor %}
@@ -58,7 +74,6 @@
         document.addEventListener('DOMContentLoaded', function() {
             var gallery = document.getElementById('gallery');
             if (gallery && typeof Viewer !== 'undefined') {
-                // 初始化灯箱画廊
                 new Viewer(gallery, {
                     toolbar: true,
                     navbar: true,
@@ -67,6 +82,79 @@
             }
         });
     </script>
+
+    <!-- 打标签弹窗 -->
+    {% if current_user.is_authenticated and all_tags %}
+    <div id="tagModal" class="fixed inset-0 bg-black/50 z-50 hidden items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[80vh] flex flex-col">
+            <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                <h3 class="text-lg font-semibold text-gray-900">选择标签</h3>
+                <button onclick="closeTagModal()" class="text-gray-400 hover:text-gray-600 transition">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <form id="tagForm" method="POST" onsubmit="return handleFormSubmit(this)">
+                <div class="px-6 py-4 overflow-y-auto flex-grow">
+                    {% if all_tags %}
+                        <div class="grid grid-cols-2 gap-2">
+                            {% for tag in all_tags %}
+                            <label class="flex items-center p-3 rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition cursor-pointer">
+                                <input type="checkbox" name="tag_ids" value="{{ tag.id }}" class="tag-checkbox w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary">
+                                <span class="ml-2 text-sm text-gray-700 truncate">{{ tag.name }}</span>
+                            </label>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <div class="text-center py-8">
+                            <p class="text-gray-500 text-sm">还没有任何标签</p>
+                            <a href="{{ url_for('manage_tags') }}" class="text-primary hover:underline text-sm mt-2 inline-block">去创建标签</a>
+                        </div>
+                    {% endif %}
+                </div>
+                <div class="px-6 py-4 border-t border-gray-100 flex justify-end space-x-3">
+                    <button type="button" onclick="closeTagModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">取消</button>
+                    <button type="submit" class="px-4 py-2 bg-primary hover:bg-blue-600 text-white rounded-lg shadow-sm transition">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        function openTagModal(photoId, selectedTagIds) {
+            const modal = document.getElementById('tagModal');
+            const form = document.getElementById('tagForm');
+            form.action = `/photo/${photoId}/tags`;
+            
+            document.querySelectorAll('.tag-checkbox').forEach(cb => {
+                cb.checked = selectedTagIds.includes(parseInt(cb.value));
+            });
+            
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeTagModal() {
+            const modal = document.getElementById('tagModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            document.body.style.overflow = '';
+        }
+
+        document.getElementById('tagModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeTagModal();
+            }
+        });
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeTagModal();
+            }
+        });
+    </script>
+    {% endif %}
+
 {% else %}
     <div class="text-center py-20 bg-gray-50 rounded-xl border border-dashed border-gray-300">
         <p class="text-gray-500">这个相册还没有照片</p>
