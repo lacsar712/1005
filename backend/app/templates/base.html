@@ -67,6 +67,8 @@
                 <div class="flex items-center space-x-4">
                     <a href="{{ url_for('browse_tags') }}" class="text-sm text-gray-600 hover:text-primary">按标签浏览</a>
                     {% if current_user.is_authenticated %}
+                        <a href="{{ url_for('admin_dashboard') }}" class="text-sm text-gray-600 hover:text-primary">数据统计</a>
+                        <span class="text-gray-300">|</span>
                         <a href="{{ url_for('operation_logs') }}" class="text-sm text-gray-600 hover:text-primary">操作日志</a>
                         <span class="text-gray-300">|</span>
                         <a href="{{ url_for('site_settings') }}" class="text-sm text-gray-600 hover:text-primary">设置</a>

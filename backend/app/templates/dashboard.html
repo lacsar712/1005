@@ -1,0 +1,535 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<!-- html2canvas + jsPDF for PDF export -->
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+
+<div id="dashboard-content">
+    <div class="mb-8">
+        <div class="flex items-center text-sm text-gray-500 mb-4">
+            <a href="{{ url_for('index') }}" class="hover:text-primary transition flex items-center">
+                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                返回首页
+            </a>
+            <span class="mx-2">/</span>
+            <span class="text-gray-800 font-medium">数据统计</span>
+        </div>
+
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-900 mb-2">数据统计仪表盘</h1>
+                <p class="text-gray-600">全站数据概览与可视化分析</p>
+            </div>
+            <div class="flex items-center gap-3 flex-wrap">
+                <div class="inline-flex rounded-lg border border-gray-200 overflow-hidden bg-white">
+                    <button id="btnDays7" class="px-4 py-2 text-sm font-medium transition {% if initial_days == 7 %}bg-primary text-white{% else %}text-gray-600 hover:bg-gray-50{% endif %}" data-days="7">
+                        近 7 天
+                    </button>
+                    <button id="btnDays30" class="px-4 py-2 text-sm font-medium transition {% if initial_days == 30 %}bg-primary text-white{% else %}text-gray-600 hover:bg-gray-50{% endif %}" data-days="30">
+                        近 30 天
+                    </button>
+                </div>
+                <button id="exportPdfBtn" class="bg-primary hover:bg-blue-600 text-white px-4 py-2 rounded-lg shadow transition flex items-center justify-center text-sm font-medium">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                    导出 PDF
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 四张汇总卡片 -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-gray-500 mb-1">相册总数</p>
+                    <p id="statAlbums" class="text-3xl font-bold text-gray-900">{{ stats.summary.total_albums }}</p>
+                </div>
+                <div class="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center">
+                    <svg class="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-gray-500 mb-1">照片总数</p>
+                    <p id="statPhotos" class="text-3xl font-bold text-gray-900">{{ stats.summary.total_photos }}</p>
+                </div>
+                <div class="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center">
+                    <svg class="w-6 h-6 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-gray-500 mb-1">今日上传</p>
+                    <p id="statToday" class="text-3xl font-bold text-gray-900">{{ stats.summary.today_uploads }}</p>
+                </div>
+                <div class="w-12 h-12 rounded-full bg-amber-50 flex items-center justify-center">
+                    <svg class="w-6 h-6 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-gray-500 mb-1">磁盘占用</p>
+                    <p id="statDisk" class="text-3xl font-bold text-gray-900">{{ stats.summary.disk_usage }}</p>
+                </div>
+                <div class="w-12 h-12 rounded-full bg-purple-50 flex items-center justify-center">
+                    <svg class="w-6 h-6 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path></svg>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 折线图 + 环形图 -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+        <div class="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-semibold text-gray-900">每日上传量趋势</h3>
+                <div class="flex items-center gap-4 text-xs text-gray-500">
+                    <span class="flex items-center"><span class="w-3 h-3 rounded-full bg-primary mr-1.5"></span>本周期</span>
+                    <span class="flex items-center"><span class="w-3 h-3 rounded-full bg-gray-300 mr-1.5"></span>上一周期</span>
+                </div>
+            </div>
+            <div class="h-72">
+                <canvas id="lineChart"></canvas>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">图片格式占比</h3>
+            <div class="h-72">
+                <canvas id="doughnutChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- 横向柱状图 -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-8">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">各相册照片数量（Top 15）</h3>
+        <div class="h-auto" style="min-height: 400px;">
+            <canvas id="barChart"></canvas>
+        </div>
+    </div>
+
+    <!-- 热力日历 -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-8">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-semibold text-gray-900">上传热力日历</h3>
+            <div class="flex items-center gap-2 text-xs text-gray-500">
+                <span>少</span>
+                <span class="w-3 h-3 rounded-sm bg-gray-100 border border-gray-200"></span>
+                <span class="w-3 h-3 rounded-sm bg-green-200"></span>
+                <span class="w-3 h-3 rounded-sm bg-green-400"></span>
+                <span class="w-3 h-3 rounded-sm bg-green-600"></span>
+                <span class="w-3 h-3 rounded-sm bg-green-700"></span>
+                <span>多</span>
+            </div>
+        </div>
+        <div id="heatmapContainer" class="overflow-x-auto">
+            <div id="heatmap" class="inline-flex flex-col gap-0.5">
+            </div>
+        </div>
+    </div>
+
+    <!-- 活跃相册简表 + 存储增长趋势 -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">上传最活跃相册（近 30 天）</h3>
+            <div id="activeAlbumsList" class="space-y-3">
+            </div>
+        </div>
+
+        <div class="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-semibold text-gray-900">存储增长趋势</h3>
+                <div id="trendIndicator" class="text-sm"></div>
+            </div>
+            <div class="h-64">
+                <canvas id="trendChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    var INITIAL_STATS = {{ stats | tojson }};
+    var currentDays = {{ initial_days }};
+
+    var lineChart, doughnutChart, barChart, trendChart;
+
+    function getHeatColor(count) {
+        if (count === 0) return 'bg-gray-100 border border-gray-200';
+        if (count <= 2) return 'bg-green-200';
+        if (count <= 5) return 'bg-green-400';
+        if (count <= 10) return 'bg-green-600';
+        return 'bg-green-700';
+    }
+
+    function renderHeatmap(weeks) {
+        var container = document.getElementById('heatmap');
+        var monthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        var html = '';
+
+        var monthRow = '<div class="flex gap-0.5 mb-1">';
+        monthRow += '<div class="w-8 text-xs text-gray-400"></div>';
+        var lastMonth = -1;
+        weeks.forEach(function(week, wi) {
+            if (week[0]) {
+                var m = parseInt(week[0].date.split('-')[1]) - 1;
+                if (m !== lastMonth) {
+                    monthRow += '<div class="w-3 text-xs text-gray-400 text-center">' + monthLabels[m] + '</div>';
+                    lastMonth = m;
+                } else {
+                    monthRow += '<div class="w-3"></div>';
+                }
+            } else {
+                monthRow += '<div class="w-3"></div>';
+            }
+        });
+        monthRow += '</div>';
+        html += monthRow;
+
+        var dayLabels = ['', '一', '', '三', '', '五', ''];
+        for (var di = 0; di < 7; di++) {
+            html += '<div class="flex gap-0.5 items-center">';
+            html += '<div class="w-8 text-xs text-gray-400 text-right pr-1">' + dayLabels[di] + '</div>';
+            weeks.forEach(function(week) {
+                var cell = week[di];
+                if (cell) {
+                    var color = getHeatColor(cell.count);
+                    html += '<div class="w-3 h-3 rounded-sm ' + color + ' cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-gray-400 transition" title="' + cell.date + ': ' + cell.count + ' 张"></div>';
+                } else {
+                    html += '<div class="w-3 h-3"></div>';
+                }
+            });
+            html += '</div>';
+        }
+
+        container.innerHTML = html;
+    }
+
+    function renderActiveAlbums(albums) {
+        var container = document.getElementById('activeAlbumsList');
+        if (!albums || albums.length === 0) {
+            container.innerHTML = '<div class="text-center py-8 text-gray-400 text-sm">近 30 天暂无上传</div>';
+            return;
+        }
+        var maxCount = Math.max.apply(null, albums.map(function(a) { return a.count; }));
+        var html = albums.map(function(album, idx) {
+            var pct = (album.count / maxCount * 100).toFixed(0);
+            var url = album.id ? '/album/' + album.id : 'javascript:void(0)';
+            var rankColors = ['bg-amber-400', 'bg-gray-400', 'bg-amber-600', 'bg-gray-300', 'bg-gray-300'];
+            var rankColor = idx < rankColors.length ? rankColors[idx] : 'bg-gray-300';
+            return `
+                <a href="` + url + `" class="block hover:bg-gray-50 rounded-lg p-3 transition">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="flex items-center min-w-0">
+                            <span class="w-6 h-6 rounded-full ` + rankColor + ` text-white text-xs font-bold flex items-center justify-center mr-2 flex-shrink-0">` + (idx + 1) + `</span>
+                            <span class="text-sm font-medium text-gray-800 truncate">` + escapeHtml(album.title) + `</span>
+                        </div>
+                        <span class="text-sm font-semibold text-primary ml-2 flex-shrink-0">` + album.count + ` 张</span>
+                    </div>
+                    <div class="w-full bg-gray-100 rounded-full h-1.5">
+                        <div class="bg-primary h-1.5 rounded-full transition-all" style="width: ` + pct + `%"></div>
+                    </div>
+                </a>
+            `;
+        }).join('');
+        container.innerHTML = html;
+    }
+
+    function renderTrendIndicator(trend) {
+        var el = document.getElementById('trendIndicator');
+        var slope = trend.slope || 0;
+        if (slope > 0) {
+            el.innerHTML = '<span class="text-green-600 font-medium">↑ ' + slope.toFixed(2) + ' 张/天 · 预计 30 天后 ' + Math.round(trend.projected_30d) + ' 张</span>';
+        } else if (slope < 0) {
+            el.innerHTML = '<span class="text-red-600 font-medium">↓ ' + Math.abs(slope).toFixed(2) + ' 张/天</span>';
+        } else {
+            el.innerHTML = '<span class="text-gray-500">趋势平稳</span>';
+        }
+    }
+
+    function escapeHtml(text) {
+        var div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    function initCharts(stats) {
+        var primaryColor = '#3b82f6';
+        var grayColor = '#9ca3af';
+
+        var lineCtx = document.getElementById('lineChart').getContext('2d');
+        lineChart = new Chart(lineCtx, {
+            type: 'line',
+            data: {
+                labels: stats.daily_uploads.current.labels,
+                datasets: [
+                    {
+                        label: '本周期',
+                        data: stats.daily_uploads.current.counts,
+                        borderColor: primaryColor,
+                        backgroundColor: primaryColor + '20',
+                        fill: true,
+                        tension: 0.3,
+                        borderWidth: 2,
+                        pointRadius: 3,
+                        pointBackgroundColor: primaryColor
+                    },
+                    {
+                        label: '上一周期',
+                        data: stats.daily_uploads.previous.counts,
+                        borderColor: grayColor,
+                        backgroundColor: 'transparent',
+                        borderDash: [5, 5],
+                        fill: false,
+                        tension: 0.3,
+                        borderWidth: 2,
+                        pointRadius: 3,
+                        pointBackgroundColor: grayColor
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: { beginAtZero: true, ticks: { precision: 0 } },
+                    x: { ticks: { maxRotation: 45, minRotation: 0 } }
+                }
+            }
+        });
+
+        var formatColors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#6366f1'];
+        var doughnutCtx = document.getElementById('doughnutChart').getContext('2d');
+        doughnutChart = new Chart(doughnutCtx, {
+            type: 'doughnut',
+            data: {
+                labels: stats.format_distribution.map(function(f) { return f.format; }),
+                datasets: [{
+                    data: stats.format_distribution.map(function(f) { return f.count; }),
+                    backgroundColor: stats.format_distribution.map(function(_, i) { return formatColors[i % formatColors.length]; }),
+                    borderWidth: 2,
+                    borderColor: '#ffffff'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom', labels: { padding: 10, usePointStyle: true, pointStyle: 'circle', font: { size: 11 } } }
+                }
+            }
+        });
+
+        var barLabels = stats.album_counts.map(function(a) { return a.title; });
+        var barData = stats.album_counts.map(function(a) { return a.count; });
+        var barColors = stats.album_counts.map(function(a) {
+            return a.id === null ? '#9ca3af' : primaryColor;
+        });
+        var barUrls = stats.album_counts.map(function(a) {
+            return a.id ? '/album/' + a.id : null;
+        });
+
+        var barCtx = document.getElementById('barChart').getContext('2d');
+        barChart = new Chart(barCtx, {
+            type: 'bar',
+            data: {
+                labels: barLabels,
+                datasets: [{
+                    data: barData,
+                    backgroundColor: barColors,
+                    borderRadius: 4,
+                    borderSkipped: false
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { beginAtZero: true, ticks: { precision: 0 } }
+                },
+                onClick: function(e, elements) {
+                    if (elements.length > 0) {
+                        var idx = elements[0].index;
+                        var url = barUrls[idx];
+                        if (url) {
+                            window.location.href = url;
+                        }
+                    }
+                },
+                onHover: function(e, elements) {
+                    e.native.target.style.cursor = elements.length > 0 && barUrls[elements[0].index] ? 'pointer' : 'default';
+                }
+            }
+        });
+
+        var trendCtx = document.getElementById('trendChart').getContext('2d');
+        var trendGradient = trendCtx.createLinearGradient(0, 0, 0, 260);
+        trendGradient.addColorStop(0, '#3b82f640');
+        trendGradient.addColorStop(1, '#3b82f600');
+        trendChart = new Chart(trendCtx, {
+            type: 'line',
+            data: {
+                labels: stats.storage_trend.labels,
+                datasets: [{
+                    label: '累计照片数',
+                    data: stats.storage_trend.cumulative,
+                    borderColor: primaryColor,
+                    backgroundColor: trendGradient,
+                    fill: true,
+                    tension: 0.3,
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
+                    pointBackgroundColor: primaryColor
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: { beginAtZero: false, ticks: { precision: 0 } },
+                    x: { ticks: { maxTicksLimit: 8, maxRotation: 45 } }
+                }
+            }
+        });
+    }
+
+    function updateCharts(stats) {
+        lineChart.data.labels = stats.daily_uploads.current.labels;
+        lineChart.data.datasets[0].data = stats.daily_uploads.current.counts;
+        lineChart.data.datasets[1].data = stats.daily_uploads.previous.counts;
+        lineChart.update();
+
+        doughnutChart.data.labels = stats.format_distribution.map(function(f) { return f.format; });
+        doughnutChart.data.datasets[0].data = stats.format_distribution.map(function(f) { return f.count; });
+        doughnutChart.update();
+
+        var barLabels = stats.album_counts.map(function(a) { return a.title; });
+        var barData = stats.album_counts.map(function(a) { return a.count; });
+        var barColors = stats.album_counts.map(function(a) {
+            return a.id === null ? '#9ca3af' : '#3b82f6';
+        });
+        barChart.data.labels = barLabels;
+        barChart.data.datasets[0].data = barData;
+        barChart.data.datasets[0].backgroundColor = barColors;
+        barChart.config._config.options.onClick = function(e, elements) {
+            var barUrls = stats.album_counts.map(function(a) {
+                return a.id ? '/album/' + a.id : null;
+            });
+            if (elements.length > 0) {
+                var idx = elements[0].index;
+                var url = barUrls[idx];
+                if (url) {
+                    window.location.href = url;
+                }
+            }
+        };
+        barChart.update();
+
+        trendChart.data.labels = stats.storage_trend.labels;
+        trendChart.data.datasets[0].data = stats.storage_trend.cumulative;
+        trendChart.update();
+
+        renderHeatmap(stats.heatmap);
+        renderActiveAlbums(stats.active_albums);
+        renderTrendIndicator(stats.storage_trend);
+
+        document.getElementById('statAlbums').textContent = stats.summary.total_albums;
+        document.getElementById('statPhotos').textContent = stats.summary.total_photos;
+        document.getElementById('statToday').textContent = stats.summary.today_uploads;
+        document.getElementById('statDisk').textContent = stats.summary.disk_usage;
+    }
+
+    async function refreshDashboard(days) {
+        currentDays = days;
+        document.getElementById('btnDays7').className = 'px-4 py-2 text-sm font-medium transition ' + (days === 7 ? 'bg-primary text-white' : 'text-gray-600 hover:bg-gray-50');
+        document.getElementById('btnDays30').className = 'px-4 py-2 text-sm font-medium transition ' + (days === 30 ? 'bg-primary text-white' : 'text-gray-600 hover:bg-gray-50');
+
+        try {
+            var resp = await fetch('/api/admin/dashboard?days=' + days);
+            var data = await resp.json();
+            if (data.success) {
+                updateCharts(data.stats);
+            }
+        } catch (e) {
+            console.error('刷新失败', e);
+        }
+    }
+
+    async function exportDashboardPDF() {
+        var btn = document.getElementById('exportPdfBtn');
+        var originalText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<svg class="animate-spin w-4 h-4 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>生成中...';
+
+        try {
+            var element = document.getElementById('dashboard-content');
+            var canvas = await html2canvas(element, {
+                scale: 2,
+                useCORS: true,
+                allowTaint: true,
+                backgroundColor: '#ffffff'
+            });
+
+            var imgData = canvas.toDataURL('image/png');
+            var { jsPDF } = window.jspdf;
+            var pdf = new jsPDF('p', 'mm', 'a4');
+
+            var pdfWidth = pdf.internal.pageSize.getWidth();
+            var pdfHeight = pdf.internal.pageSize.getHeight();
+            var imgWidth = pdfWidth - 20;
+            var imgHeight = canvas.height * imgWidth / canvas.width;
+
+            var heightLeft = imgHeight;
+            var position = 10;
+            pdf.addImage(imgData, 'PNG', 10, position, imgWidth, imgHeight);
+            heightLeft -= (pdfHeight - 20);
+
+            while (heightLeft >= 0) {
+                position = heightLeft - imgHeight + 10;
+                pdf.addPage();
+                pdf.addImage(imgData, 'PNG', 10, position, imgWidth, imgHeight);
+                heightLeft -= (pdfHeight - 20);
+            }
+
+            var filename = 'dashboard_' + new Date().toISOString().slice(0, 10).replace(/-/g, '') + '.pdf';
+            pdf.save(filename);
+        } catch (e) {
+            console.error('PDF 导出失败', e);
+            Swal.fire({ icon: 'error', title: '导出失败', text: '请稍后重试' });
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        initCharts(INITIAL_STATS);
+        renderHeatmap(INITIAL_STATS.heatmap);
+        renderActiveAlbums(INITIAL_STATS.active_albums);
+        renderTrendIndicator(INITIAL_STATS.storage_trend);
+
+        document.getElementById('btnDays7').addEventListener('click', function() { refreshDashboard(7); });
+        document.getElementById('btnDays30').addEventListener('click', function() { refreshDashboard(30); });
+        document.getElementById('exportPdfBtn').addEventListener('click', exportDashboardPDF);
+    });
+</script>
+{% endblock %}
