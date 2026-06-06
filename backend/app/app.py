@@ -15,7 +15,26 @@ from sqlalchemy import or_, and_, func
 from PIL import Image
 from PIL.ExifTags import TAGS, GPSTAGS
 import requests
-from .db import db, Album, Photo, Tag, Comment, SiteConfig, OperationLog, ExportJob, DownloadHistory, Trip, format_bytes_human
+from .db import db, Album, Photo, Tag, Comment, SiteConfig, OperationLog, ExportJob, DownloadHistory, Trip, format_bytes_human, Notification, WebhookConfig
+from .services import NotificationService, AggregationService, WebhookService, CleanupService
+
+
+def dispatch_notification(
+    type,
+    title,
+    content=None,
+    status=Notification.STATUS_SUCCESS,
+    task_id=None,
+    parent_id=None,
+    data=None,
+):
+    notif = NotificationService.create(
+        type=type, title=title, content=content, status=status,
+        task_id=task_id, parent_id=parent_id, data=data,
+    )
+    WebhookService.dispatch(notif)
+    CleanupService.cleanup_if_needed()
+    return notif
 
 # 常量设置
 UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static/uploads')
@@ -565,7 +584,13 @@ def create_app():
         config = get_site_config()
         config['max_upload_size_mb_int'] = int(config.get('max_upload_size_mb', 5))
         config['show_site_stats_bool'] = config.get('show_site_stats', 'true') == 'true'
-        return {'site_config': config}
+        unread_notification_count = 0
+        if current_user.is_authenticated:
+            unread_notification_count = NotificationService.get_unread_count()
+        return {
+            'site_config': config,
+            'unread_notification_count': unread_notification_count,
+        }
 
     # 413 请求过大错误处理
     @app.errorhandler(413)
@@ -664,22 +689,63 @@ def create_app():
         album = Album.query.get_or_404(album_id)
         before_snap = model_snapshot(album)
         photo_count = len(album.photos)
+        album_title = album.title
         parent_log = log_operation('album_delete',
                                    f'删除相册「{album.title}」（含 {photo_count} 张照片）',
                                    resource_type='album', resource_id=album.id,
                                    before_data=before_snap, commit=False)
-        for photo in album.photos:
+        if photo_count > 1:
+            batch_parent, _ = AggregationService.create_batch_parent(
+                type=Notification.TYPE_DELETE_BATCH,
+                title=f'批量删除 {photo_count} 张照片',
+                content=f'随相册「{album_title}」一起删除',
+                data={'album_id': album.id, 'album_title': album_title, 'total': photo_count},
+            )
+        for idx, photo in enumerate(album.photos):
             photo_before = model_snapshot(photo)
             log_operation('photo_delete',
                           f'删除照片「{photo.original_filename}」（随相册删除）',
                           resource_type='photo', resource_id=photo.id,
                           before_data=photo_before, parent_id=parent_log.id, commit=False)
+            if photo_count > 1:
+                AggregationService.add_child(
+                    parent_id=batch_parent.id,
+                    type=Notification.TYPE_DELETE,
+                    title=f'照片已删除',
+                    content=f'「{photo.original_filename}」已被删除',
+                    status=Notification.STATUS_SUCCESS,
+                    data={'photo_id': photo.id, 'original_filename': photo.original_filename},
+                    commit=False,
+                )
             try:
                 os.remove(os.path.join(app.config['UPLOAD_FOLDER'], photo.filename))
             except OSError:
                 pass
         db.session.delete(album)
         db.session.commit()
+        if photo_count > 1:
+            AggregationService.finalize_batch(
+                batch_parent.id,
+                status=Notification.STATUS_SUCCESS,
+                data={'total': photo_count, 'success': photo_count, 'failed': 0,
+                      'album_id': album.id, 'album_title': album_title},
+            )
+            WebhookService.dispatch(batch_parent)
+            CleanupService.cleanup_if_needed()
+        elif photo_count == 1:
+            dispatch_notification(
+                type=Notification.TYPE_DELETE,
+                title=f'相册已删除',
+                content=f'相册「{album_title}」（含 1 张照片）已删除',
+                data={'album_id': album.id, 'album_title': album_title, 'photo_count': photo_count},
+            )
+        else:
+            dispatch_notification(
+                type=Notification.TYPE_DELETE,
+                title=f'相册已删除',
+                content=f'空相册「{album_title}」已删除',
+                data={'album_id': album.id, 'album_title': album_title},
+            )
         flash('相册已删除', 'success')
         return redirect(url_for('index'))
 
@@ -751,18 +817,47 @@ def create_app():
                                   f'上传照片「{p.original_filename}」至相册「{album.title}」',
                                   resource_type='photo', resource_id=p.id,
                                   after_data=model_snapshot(p))
+                    dispatch_notification(
+                        type=Notification.TYPE_UPLOAD,
+                        title=f'照片上传成功',
+                        content=f'「{p.original_filename}」已上传至相册「{album.title}」',
+                        data={'photo_id': p.id, 'album_id': album.id, 'album_title': album.title},
+                    )
                 else:
                     is_anomaly = detect_anomaly('photo_upload', count=uploaded_count)
                     parent_log = log_operation('photo_upload',
                                                f'批量上传 {uploaded_count} 张照片至相册「{album.title}」',
                                                resource_type='album', resource_id=album.id,
                                                is_anomaly=is_anomaly, commit=False)
-                    for p in uploaded_photos:
+                    batch_parent, task_id = AggregationService.create_batch_parent(
+                        type=Notification.TYPE_UPLOAD_BATCH,
+                        title=f'批量上传 {uploaded_count} 张照片',
+                        content=f'上传至相册「{album.title}」',
+                        data={'album_id': album.id, 'album_title': album.title, 'total': uploaded_count},
+                    )
+                    for idx, p in enumerate(uploaded_photos):
                         log_operation('photo_upload',
                                       f'上传照片「{p.original_filename}」',
                                       resource_type='photo', resource_id=p.id,
                                       after_data=model_snapshot(p),
                                       parent_id=parent_log.id, commit=False)
+                        AggregationService.add_child(
+                            parent_id=batch_parent.id,
+                            type=Notification.TYPE_UPLOAD,
+                            title=f'照片上传成功',
+                            content=f'「{p.original_filename}」上传完成',
+                            status=Notification.STATUS_SUCCESS,
+                            data={'photo_id': p.id, 'original_filename': p.original_filename},
+                            commit=False,
+                        )
+                    AggregationService.finalize_batch(
+                        batch_parent.id,
+                        status=Notification.STATUS_SUCCESS,
+                        data={'total': uploaded_count, 'success': uploaded_count, 'failed': 0,
+                              'album_id': album.id, 'album_title': album.title},
+                    )
+                    WebhookService.dispatch(batch_parent)
+                    CleanupService.cleanup_if_needed()
                 db.session.commit()
 
                 uploaded_ids = [p.id for p in uploaded_photos]
@@ -788,6 +883,7 @@ def create_app():
         photo = Photo.query.get_or_404(photo_id)
         album_id = photo.album_id
         before_snap = model_snapshot(photo)
+        original_filename = photo.original_filename
         log_operation('photo_delete',
                       f'删除照片「{photo.original_filename}」',
                       resource_type='photo', resource_id=photo.id,
@@ -798,6 +894,12 @@ def create_app():
             pass
         db.session.delete(photo)
         db.session.commit()
+        dispatch_notification(
+            type=Notification.TYPE_DELETE,
+            title=f'照片已删除',
+            content=f'「{original_filename}」已被删除',
+            data={'photo_id': photo_id, 'original_filename': original_filename},
+        )
         flash('图片已删除', 'success')
         return redirect(url_for('album_detail', album_id=album_id))
 
@@ -1768,11 +1870,43 @@ def create_app():
                               resource_type='album', resource_id=album.id,
                               after_data={'photo_count': job.total_photos, 'file_size': file_size, 'options': options})
 
+                dispatch_notification(
+                    type=Notification.TYPE_EXPORT_ZIP,
+                    title=f'ZIP 导出完成',
+                    content=f'相册「{album.title}」已成功导出，共 {job.total_photos} 张照片',
+                    status=Notification.STATUS_SUCCESS,
+                    task_id=f'export_{job.id}',
+                    data={
+                        'job_id': job.id,
+                        'album_id': album.id,
+                        'album_title': album.title,
+                        'photo_count': job.total_photos,
+                        'file_size': file_size,
+                        'file_size_human': format_bytes_human(file_size),
+                        'download_url': f'/export/{job.id}/download',
+                    },
+                )
+
             except Exception as e:
                 import traceback
                 job.status = ExportJob.STATUS_FAILED
                 job.error_message = str(e) + "\n" + traceback.format_exc()[-500:]
                 db.session.commit()
+
+                album = Album.query.get(job.album_id) if job else None
+                dispatch_notification(
+                    type=Notification.TYPE_EXPORT_ZIP,
+                    title=f'ZIP 导出失败',
+                    content=f'相册「{album.title if album else "未知"}」导出失败：{str(e)}',
+                    status=Notification.STATUS_FAILED,
+                    task_id=f'export_{job.id}' if job else None,
+                    data={
+                        'job_id': job.id if job else None,
+                        'album_id': album.id if album else None,
+                        'album_title': album.title if album else None,
+                        'error': str(e),
+                    },
+                )
 
     @app.route('/album/<int:album_id>/export', methods=['POST'])
     @login_required
@@ -2027,6 +2161,191 @@ def create_app():
             return jsonify({'success': True, 'message': '行程推断完成'})
         except Exception as e:
             return jsonify({'success': False, 'message': str(e)}), 500
+
+    # --- 通知中心路由 ---
+
+    @app.route('/notifications')
+    @login_required
+    def notifications_page():
+        """通知列表页"""
+        page = request.args.get('page', 1, type=int)
+        per_page = 20
+        type_filter = request.args.get('type', '').strip() or None
+        status_filter = request.args.get('status', '').strip() or None
+        unread_only = request.args.get('unread_only', '').strip() == '1'
+
+        pagination = NotificationService.get_list(
+            page=page, per_page=per_page,
+            type_filter=type_filter, status_filter=status_filter,
+            unread_only=unread_only,
+        )
+
+        type_options = sorted(Notification.TYPE_LABELS.items(), key=lambda x: x[1])
+        status_options = [
+            (Notification.STATUS_PENDING, '处理中'),
+            (Notification.STATUS_SUCCESS, '成功'),
+            (Notification.STATUS_FAILED, '失败'),
+            (Notification.STATUS_PARTIAL, '部分成功'),
+        ]
+
+        return render_template(
+            'notifications.html',
+            notifications=pagination.items,
+            pagination=pagination,
+            total=pagination.total,
+            unread_count=NotificationService.get_unread_count(),
+            type_options=type_options,
+            status_options=status_options,
+            current_type=type_filter or '',
+            current_status=status_filter or '',
+            unread_only=unread_only,
+        )
+
+    @app.route('/api/notifications/unread-count')
+    @login_required
+    def api_notification_unread_count():
+        """获取未读通知数量"""
+        return jsonify({
+            'success': True,
+            'count': NotificationService.get_unread_count(),
+        })
+
+    @app.route('/api/notifications/<int:notification_id>')
+    @login_required
+    def api_notification_detail(notification_id):
+        """获取单条通知详情（含子项）"""
+        notif = NotificationService.get_detail(notification_id)
+        if not notif:
+            return jsonify({'success': False, 'message': '通知不存在'}), 404
+        return jsonify({
+            'success': True,
+            'notification': notif.to_dict(include_children=True),
+        })
+
+    @app.route('/api/notifications/<int:notification_id>/read', methods=['POST'])
+    @login_required
+    def api_notification_mark_read(notification_id):
+        """标记单条通知已读"""
+        notif = NotificationService.mark_as_read(notification_id)
+        if notif and notif.is_aggregated:
+            AggregationService.mark_parent_and_children_read(notification_id)
+        return jsonify({
+            'success': True,
+            'unread_count': NotificationService.get_unread_count(),
+        })
+
+    @app.route('/api/notifications/read-all', methods=['POST'])
+    @login_required
+    def api_notification_mark_all_read():
+        """标记全部通知已读"""
+        count = NotificationService.mark_all_as_read()
+        return jsonify({
+            'success': True,
+            'marked_count': count,
+        })
+
+    @app.route('/api/notifications/<int:notification_id>', methods=['DELETE'])
+    @login_required
+    def api_notification_delete(notification_id):
+        """删除单条通知"""
+        ok = NotificationService.delete(notification_id)
+        return jsonify({
+            'success': ok,
+            'unread_count': NotificationService.get_unread_count(),
+        })
+
+    # --- Webhook 配置管理 ---
+
+    @app.route('/admin/webhooks')
+    @login_required
+    def webhooks_page():
+        """Webhook 配置管理页"""
+        configs = WebhookService.list_configs()
+        event_type_options = sorted(WebhookConfig.EVENT_TYPES.items(), key=lambda x: x[1])
+        return render_template(
+            'webhooks.html',
+            configs=configs,
+            event_type_options=event_type_options,
+        )
+
+    @app.route('/api/admin/webhooks', methods=['POST'])
+    @login_required
+    def api_webhook_create():
+        """创建 Webhook 配置"""
+        data = request.get_json() if request.is_json else request.form
+        name = (data.get('name') or '').strip()
+        url = (data.get('url') or '').strip()
+        secret = (data.get('secret') or '').strip() or None
+        event_types = data.getlist('event_types') if hasattr(data, 'getlist') else (data.get('event_types') or [])
+        is_active = str(data.get('is_active', '1')) in ('1', 'true', 'True', 'on')
+
+        if not name:
+            return jsonify({'success': False, 'message': '名称不能为空'}), 400
+        if not url:
+            return jsonify({'success': False, 'message': 'URL 不能为空'}), 400
+
+        config = WebhookService.create_config(
+            name=name, url=url, secret=secret,
+            event_types=event_types, is_active=is_active,
+        )
+        log_operation('webhook_create', f'创建 Webhook 配置「{name}」',
+                      resource_type='webhook', resource_id=config.id,
+                      after_data=config.to_dict())
+        return jsonify({'success': True, 'config': config.to_dict()})
+
+    @app.route('/api/admin/webhooks/<int:config_id>', methods=['POST'])
+    @login_required
+    def api_webhook_update(config_id):
+        """更新 Webhook 配置"""
+        data = request.get_json() if request.is_json else request.form
+        before = WebhookService.get_config(config_id)
+        if not before:
+            return jsonify({'success': False, 'message': '配置不存在'}), 404
+        before_snap = before.to_dict()
+
+        kwargs = {}
+        if 'name' in data:
+            kwargs['name'] = data.get('name')
+        if 'url' in data:
+            kwargs['url'] = data.get('url')
+        if 'secret' in data:
+            kwargs['secret'] = data.get('secret')
+        if 'event_types' in data:
+            kwargs['event_types'] = data.get('event_types') or []
+        if 'is_active' in data:
+            kwargs['is_active'] = str(data.get('is_active')) in ('1', 'true', 'True', 'on')
+
+        config = WebhookService.update_config(config_id, **kwargs)
+        if not config:
+            return jsonify({'success': False, 'message': '配置不存在'}), 404
+
+        after_snap = config.to_dict()
+        log_operation('webhook_update', f'更新 Webhook 配置「{config.name}」',
+                      resource_type='webhook', resource_id=config.id,
+                      before_data=before_snap, after_data=after_snap)
+        return jsonify({'success': True, 'config': config.to_dict()})
+
+    @app.route('/api/admin/webhooks/<int:config_id>', methods=['DELETE'])
+    @login_required
+    def api_webhook_delete(config_id):
+        """删除 Webhook 配置"""
+        config = WebhookService.get_config(config_id)
+        if not config:
+            return jsonify({'success': False, 'message': '配置不存在'}), 404
+        before_snap = config.to_dict()
+        ok = WebhookService.delete_config(config_id)
+        if ok:
+            log_operation('webhook_delete', f'删除 Webhook 配置「{config.name}」',
+                          resource_type='webhook', resource_id=config_id,
+                          before_data=before_snap)
+        return jsonify({'success': ok})
+
+    @app.route('/api/admin/webhooks/<int:config_id>/test', methods=['POST'])
+    @login_required
+    def api_webhook_test(config_id):
+        """测试 Webhook 配置"""
+        success, message = WebhookService.test_config(config_id)
+        return jsonify({'success': success, 'message': message})
 
     return app
 

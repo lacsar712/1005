@@ -178,6 +178,9 @@ class OperationLog(db.Model):
         'export_zip': 'ZIP导出',
         'recycle_bin_clear': '清空回收站',
         'recycle_bin_restore': '从回收站恢复',
+        'webhook_create': '创建Webhook',
+        'webhook_update': '更新Webhook',
+        'webhook_delete': '删除Webhook',
     }
 
     id = db.Column(db.Integer, primary_key=True)
@@ -303,6 +306,129 @@ class DownloadHistory(db.Model):
             'ip_address': self.ip_address,
             'created_at': self.created_at.strftime('%Y-%m-%d %H:%M:%S') if self.created_at else None,
             'file_exists': self.file_exists,
+        }
+
+
+class Notification(db.Model):
+    """通知模型"""
+
+    TYPE_UPLOAD = 'upload'
+    TYPE_UPLOAD_BATCH = 'upload_batch'
+    TYPE_DELETE = 'delete'
+    TYPE_DELETE_BATCH = 'delete_batch'
+    TYPE_EXPORT_ZIP = 'export_zip'
+    TYPE_RECYCLE_CLEAR = 'recycle_clear'
+    TYPE_SYSTEM = 'system'
+
+    TYPE_LABELS = {
+        TYPE_UPLOAD: '上传成功',
+        TYPE_UPLOAD_BATCH: '批量上传',
+        TYPE_DELETE: '删除成功',
+        TYPE_DELETE_BATCH: '批量删除',
+        TYPE_EXPORT_ZIP: 'ZIP 导出',
+        TYPE_RECYCLE_CLEAR: '回收站清理',
+        TYPE_SYSTEM: '系统通知',
+    }
+
+    STATUS_PENDING = 'pending'
+    STATUS_SUCCESS = 'success'
+    STATUS_FAILED = 'failed'
+    STATUS_PARTIAL = 'partial'
+
+    MAX_RETENTION = 100
+
+    id = db.Column(db.Integer, primary_key=True)
+    type = db.Column(db.String(50), nullable=False, index=True)
+    title = db.Column(db.String(200), nullable=False)
+    content = db.Column(db.Text)
+    status = db.Column(db.String(20), nullable=False, default=STATUS_SUCCESS, index=True)
+    is_read = db.Column(db.Boolean, default=False, index=True)
+    task_id = db.Column(db.String(100), index=True)
+    parent_id = db.Column(db.Integer, db.ForeignKey('notification.id', ondelete='CASCADE'))
+    data = db.Column(JSONType)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    read_at = db.Column(db.DateTime)
+
+    parent = db.relationship('Notification', remote_side=[id], backref=db.backref('children', lazy='dynamic', cascade='all, delete-orphan'))
+
+    @property
+    def type_label(self):
+        return self.TYPE_LABELS.get(self.type, self.type)
+
+    @property
+    def is_aggregated(self):
+        return self.children.count() > 0
+
+    @property
+    def children_count(self):
+        return self.children.count()
+
+    @property
+    def unread_children_count(self):
+        return self.children.filter_by(is_read=False).count()
+
+    def to_dict(self, include_children=False):
+        data = {
+            'id': self.id,
+            'type': self.type,
+            'type_label': self.type_label,
+            'title': self.title,
+            'content': self.content,
+            'status': self.status,
+            'is_read': self.is_read,
+            'task_id': self.task_id,
+            'parent_id': self.parent_id,
+            'data': self.data or {},
+            'created_at': self.created_at.strftime('%Y-%m-%d %H:%M:%S') if self.created_at else None,
+            'read_at': self.read_at.strftime('%Y-%m-%d %H:%M:%S') if self.read_at else None,
+            'is_aggregated': self.is_aggregated,
+            'children_count': self.children_count,
+            'unread_children_count': self.unread_children_count,
+        }
+        if include_children:
+            data['children'] = [c.to_dict(include_children=False) for c in self.children.order_by(Notification.created_at.desc()).all()]
+        return data
+
+
+class WebhookConfig(db.Model):
+    """Webhook 配置模型"""
+
+    EVENT_TYPES = {
+        'upload': '上传事件',
+        'delete': '删除事件',
+        'export_zip': 'ZIP 导出事件',
+        'recycle_clear': '回收站清理事件',
+        'system': '系统事件',
+        'all': '所有事件',
+    }
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    url = db.Column(db.String(500), nullable=False)
+    secret = db.Column(db.String(100))
+    event_types = db.Column(JSONType)
+    is_active = db.Column(db.Boolean, default=True)
+    last_triggered_at = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    @property
+    def event_types_display(self):
+        types = self.event_types or []
+        labels = [self.EVENT_TYPES.get(t, t) for t in types]
+        return '、'.join(labels) or '无'
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'url': self.url,
+            'secret': self.secret,
+            'event_types': self.event_types or [],
+            'is_active': self.is_active,
+            'last_triggered_at': self.last_triggered_at.strftime('%Y-%m-%d %H:%M:%S') if self.last_triggered_at else None,
+            'created_at': self.created_at.strftime('%Y-%m-%d %H:%M:%S') if self.created_at else None,
+            'updated_at': self.updated_at.strftime('%Y-%m-%d %H:%M:%S') if self.updated_at else None,
         }
 
 

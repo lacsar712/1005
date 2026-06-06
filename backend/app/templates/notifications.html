@@ -1,0 +1,301 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-800">通知中心</h1>
+            <p class="text-sm text-gray-500 mt-1">共 {{ total }} 条通知，未读 {{ unread_count }} 条</p>
+        </div>
+        <div class="flex items-center gap-3">
+            <button id="markAllReadBtn" class="px-4 py-2 text-sm rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-700 transition">
+                全部已读
+            </button>
+        </div>
+    </div>
+
+    <!-- 筛选栏 -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-6">
+        <form method="GET" class="flex flex-wrap items-center gap-4">
+            <div class="flex items-center gap-2">
+                <label class="text-sm text-gray-600">类型：</label>
+                <select name="type" class="text-sm px-3 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary/30">
+                    <option value="">全部</option>
+                    {% for val, label in type_options %}
+                        <option value="{{ val }}" {% if current_type == val %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="flex items-center gap-2">
+                <label class="text-sm text-gray-600">状态：</label>
+                <select name="status" class="text-sm px-3 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary/30">
+                    <option value="">全部</option>
+                    {% for val, label in status_options %}
+                        <option value="{{ val }}" {% if current_status == val %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="flex items-center gap-2">
+                <label class="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer">
+                    <input type="checkbox" name="unread_only" value="1" {% if unread_only %}checked{% endif %}
+                        class="rounded border-gray-300 text-primary focus:ring-primary">
+                    仅未读
+                </label>
+            </div>
+            <div class="flex items-center gap-2">
+                <button type="submit" class="text-sm px-4 py-1.5 rounded-lg bg-primary text-white hover:bg-blue-600 transition">
+                    筛选
+                </button>
+                <a href="{{ url_for('notifications_page') }}" class="text-sm px-4 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition">
+                    重置
+                </a>
+            </div>
+        </form>
+    </div>
+
+    <!-- 通知列表 -->
+    <div class="space-y-3" id="notificationList">
+        {% for notif in notifications %}
+        <div class="notification-item bg-white rounded-xl shadow-sm border {% if not notif.is_read %}border-blue-200 ring-1 ring-blue-50{% else %}border-gray-100{% endif %} p-4 transition"
+             data-id="{{ notif.id }}" data-aggregated="{{ '1' if notif.is_aggregated else '0' }}">
+            <div class="flex items-start gap-3">
+                <!-- 图标 -->
+                <div class="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center
+                    {% if notif.type == 'upload' or notif.type == 'upload_batch' %}bg-green-50 text-green-600
+                    {% elif notif.type == 'delete' or notif.type == 'delete_batch' %}bg-red-50 text-red-600
+                    {% elif notif.type == 'export_zip' %}bg-blue-50 text-blue-600
+                    {% elif notif.type == 'recycle_clear' %}bg-orange-50 text-orange-600
+                    {% else %}bg-gray-50 text-gray-600{% endif %}">
+                    {% if notif.type == 'upload' or notif.type == 'upload_batch' %}
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                    {% elif notif.type == 'delete' or notif.type == 'delete_batch' %}
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                    {% elif notif.type == 'export_zip' %}
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                    {% else %}
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    {% endif %}
+                </div>
+
+                <!-- 内容 -->
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center justify-between gap-3">
+                        <div class="flex items-center gap-2 min-w-0">
+                            <h3 class="font-medium text-gray-800 truncate">{{ notif.title }}</h3>
+                            {% if notif.is_aggregated %}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600">
+                                    {{ notif.children_count }} 条
+                                </span>
+                            {% endif %}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs
+                                {% if notif.status == 'success' %}bg-green-50 text-green-700
+                                {% elif notif.status == 'failed' %}bg-red-50 text-red-700
+                                {% elif notif.status == 'partial' %}bg-yellow-50 text-yellow-700
+                                {% else %}bg-blue-50 text-blue-700{% endif %}">
+                                {% if notif.status == 'success' %}成功
+                                {% elif notif.status == 'failed' %}失败
+                                {% elif notif.status == 'partial' %}部分成功
+                                {% else %}处理中{% endif %}
+                            </span>
+                        </div>
+                        <span class="text-xs text-gray-400 flex-shrink-0">{{ notif.created_at.strftime('%m-%d %H:%M') }}</span>
+                    </div>
+                    {% if notif.content %}
+                        <p class="text-sm text-gray-500 mt-1">{{ notif.content }}</p>
+                    {% endif %}
+
+                    <!-- 操作按钮 -->
+                    <div class="flex items-center gap-3 mt-2">
+                        {% if notif.is_aggregated %}
+                            <button class="toggle-children text-xs text-primary hover:text-blue-700 transition flex items-center gap-1">
+                                <svg class="w-3.5 h-3.5 toggle-icon transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                                <span class="toggle-text">展开详情</span>
+                            </button>
+                        {% endif %}
+                        {% if not notif.is_read %}
+                            <button class="mark-read-btn text-xs text-gray-500 hover:text-primary transition">标为已读</button>
+                        {% endif %}
+                        <button class="delete-btn text-xs text-gray-400 hover:text-red-500 transition ml-auto">删除</button>
+                        {% if notif.type == 'export_zip' and notif.data and notif.data.download_url %}
+                            <a href="{{ notif.data.download_url }}" class="text-xs text-primary hover:text-blue-700 transition flex items-center gap-1">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                                下载 ZIP
+                            </a>
+                        {% endif %}
+                    </div>
+
+                    <!-- 子项列表（聚合通知） -->
+                    {% if notif.is_aggregated %}
+                        <div class="children-list hidden mt-3 pl-2 border-l-2 border-gray-100 space-y-2">
+                            <div class="text-xs text-gray-400">子项加载中...</div>
+                        </div>
+                    {% endif %}
+                </div>
+
+                <!-- 未读指示点 -->
+                {% if not notif.is_read %}
+                    <div class="flex-shrink-0 w-2 h-2 mt-2 rounded-full bg-blue-500"></div>
+                {% endif %}
+            </div>
+        </div>
+        {% else %}
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">
+            <svg class="w-16 h-16 mx-auto text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
+            <p class="text-gray-400 mt-4">暂无通知</p>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- 分页 -->
+    {% if pagination.pages > 1 %}
+    <div class="flex items-center justify-center gap-2 mt-6">
+        {% if pagination.has_prev %}
+            {% set args = request.args.to_dict() %}{% set _ = args.update({'page': pagination.prev_num}) %}
+            <a href="{{ url_for('notifications_page', **args) }}" class="px-3 py-1.5 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50">上一页</a>
+        {% endif %}
+        {% for p in range(1, pagination.pages + 1) %}
+            {% if p == pagination.page %}
+                <span class="px-3 py-1.5 text-sm rounded-lg bg-primary text-white">{{ p }}</span>
+            {% elif p == 1 or p == pagination.pages or (p >= pagination.page - 2 and p <= pagination.page + 2) %}
+                {% set args = request.args.to_dict() %}{% set _ = args.update({'page': p}) %}
+                <a href="{{ url_for('notifications_page', **args) }}" class="px-3 py-1.5 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50">{{ p }}</a>
+            {% elif p == pagination.page - 3 or p == pagination.page + 3 %}
+                <span class="text-gray-400">...</span>
+            {% endif %}
+        {% endfor %}
+        {% if pagination.has_next %}
+            {% set args = request.args.to_dict() %}{% set _ = args.update({'page': pagination.next_num}) %}
+            <a href="{{ url_for('notifications_page', **args) }}" class="px-3 py-1.5 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50">下一页</a>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+
+<script>
+(function() {
+    const list = document.getElementById('notificationList');
+    if (!list) return;
+
+    async function markRead(id, item) {
+        try {
+            const resp = await fetch(`/api/notifications/${id}/read`, { method: 'POST' });
+            const data = await resp.json();
+            if (data.success) {
+                item.classList.remove('border-blue-200', 'ring-1', 'ring-blue-50');
+                item.classList.add('border-gray-100');
+                const dot = item.querySelector('.bg-blue-500.w-2');
+                if (dot) dot.remove();
+                const btn = item.querySelector('.mark-read-btn');
+                if (btn) btn.remove();
+                if (window.refreshNotificationBadge) window.refreshNotificationBadge();
+            }
+        } catch (e) {}
+    }
+
+    async function deleteNotif(id, item) {
+        try {
+            const resp = await fetch(`/api/notifications/${id}`, { method: 'DELETE' });
+            const data = await resp.json();
+            if (data.success) {
+                item.style.opacity = '0';
+                item.style.transform = 'translateX(20px)';
+                setTimeout(() => item.remove(), 200);
+                if (window.refreshNotificationBadge) window.refreshNotificationBadge();
+            }
+        } catch (e) {}
+    }
+
+    async function loadChildren(id, container) {
+        try {
+            const resp = await fetch(`/api/notifications/${id}`);
+            const data = await resp.json();
+            if (!data.success || !data.notification.children) return;
+
+            const children = data.notification.children;
+            if (children.length === 0) {
+                container.innerHTML = '<div class="text-xs text-gray-400">无子项</div>';
+                return;
+            }
+
+            container.innerHTML = children.map(c => `
+                <div class="flex items-start gap-2 py-2">
+                    <div class="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center
+                        ${c.status === 'success' ? 'bg-green-50 text-green-500' : 'bg-red-50 text-red-500'}">
+                        ${c.status === 'success'
+                            ? '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>'
+                            : '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>'}
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="text-sm text-gray-700">${escapeHtml(c.title)}</div>
+                        ${c.content ? `<div class="text-xs text-gray-400 mt-0.5">${escapeHtml(c.content)}</div>` : ''}
+                    </div>
+                    <div class="text-xs text-gray-400 flex-shrink-0">${c.created_at ? c.created_at.slice(5, 16) : ''}</div>
+                </div>
+            `).join('');
+        } catch (e) {
+            container.innerHTML = '<div class="text-xs text-red-400">加载失败</div>';
+        }
+    }
+
+    function escapeHtml(text) {
+        if (text == null) return '';
+        const div = document.createElement('div');
+        div.textContent = String(text);
+        return div.innerHTML;
+    }
+
+    list.addEventListener('click', function(e) {
+        const item = e.target.closest('.notification-item');
+        if (!item) return;
+        const id = item.dataset.id;
+
+        if (e.target.closest('.mark-read-btn')) {
+            markRead(id, item);
+            return;
+        }
+        if (e.target.closest('.delete-btn')) {
+            if (confirm('确定删除该通知？')) deleteNotif(id, item);
+            return;
+        }
+        if (e.target.closest('.toggle-children')) {
+            const listEl = item.querySelector('.children-list');
+            const icon = item.querySelector('.toggle-icon');
+            const text = item.querySelector('.toggle-text');
+            if (listEl.classList.contains('hidden')) {
+                listEl.classList.remove('hidden');
+                icon.style.transform = 'rotate(180deg)';
+                text.textContent = '收起详情';
+                if (listEl.dataset.loaded !== '1') {
+                    loadChildren(id, listEl);
+                    listEl.dataset.loaded = '1';
+                }
+            } else {
+                listEl.classList.add('hidden');
+                icon.style.transform = '';
+                text.textContent = '展开详情';
+            }
+            return;
+        }
+        if (!item.querySelector('.bg-blue-500.w-2')) return;
+        markRead(id, item);
+    });
+
+    // 全部已读
+    document.getElementById('markAllReadBtn')?.addEventListener('click', async function() {
+        try {
+            const resp = await fetch('/api/notifications/read-all', { method: 'POST' });
+            const data = await resp.json();
+            if (data.success) {
+                document.querySelectorAll('.notification-item').forEach(item => {
+                    item.classList.remove('border-blue-200', 'ring-1', 'ring-blue-50');
+                    item.classList.add('border-gray-100');
+                    item.querySelectorAll('.bg-blue-500.w-2, .mark-read-btn').forEach(el => el.remove());
+                });
+                if (window.refreshNotificationBadge) window.refreshNotificationBadge();
+                Swal.fire({ toast: true, position: 'top', icon: 'success', title: `已标记 ${data.marked_count} 条为已读`, showConfirmButton: false, timer: 2000 });
+            }
+        } catch (e) {}
+    });
+})();
+</script>
+{% endblock %}

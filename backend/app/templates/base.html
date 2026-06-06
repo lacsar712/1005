@@ -71,11 +71,24 @@
                         地图浏览
                     </a>
                     {% if current_user.is_authenticated %}
+                        <a href="{{ url_for('notifications_page') }}" class="relative text-gray-600 hover:text-primary transition" title="通知中心" id="navBellBtn">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
+                            {% if unread_notification_count > 0 %}
+                                <span id="navBellBadge" class="absolute -top-1.5 -right-2 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+                                    {{ unread_notification_count if unread_notification_count < 100 else '99+' }}
+                                </span>
+                            {% else %}
+                                <span id="navBellBadge" class="hidden absolute -top-1.5 -right-2 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center"></span>
+                            {% endif %}
+                        </a>
+                        <span class="text-gray-300">|</span>
                         <a href="{{ url_for('admin_dashboard') }}" class="text-sm text-gray-600 hover:text-primary">数据统计</a>
                         <span class="text-gray-300">|</span>
                         <a href="{{ url_for('download_history') }}" class="text-sm text-gray-600 hover:text-primary">下载记录</a>
                         <span class="text-gray-300">|</span>
                         <a href="{{ url_for('operation_logs') }}" class="text-sm text-gray-600 hover:text-primary">操作日志</a>
+                        <span class="text-gray-300">|</span>
+                        <a href="{{ url_for('webhooks_page') }}" class="text-sm text-gray-600 hover:text-primary">Webhook</a>
                         <span class="text-gray-300">|</span>
                         <a href="{{ url_for('site_settings') }}" class="text-sm text-gray-600 hover:text-primary">设置</a>
                         <span class="text-gray-300">|</span>
@@ -355,6 +368,37 @@
                 dropdown.classList.add('hidden');
             }
         });
+    })();
+    </script>
+
+    <!-- 通知中心 JS -->
+    <script>
+    (function() {
+        const badge = document.getElementById('navBellBadge');
+        if (!badge) return;
+
+        async function refreshUnreadCount() {
+            try {
+                const resp = await fetch('/api/notifications/unread-count');
+                const data = await resp.json();
+                if (data.success) {
+                    updateBadge(data.count);
+                }
+            } catch (e) {}
+        }
+
+        function updateBadge(count) {
+            if (!count || count <= 0) {
+                badge.classList.add('hidden');
+                badge.textContent = '';
+            } else {
+                badge.classList.remove('hidden');
+                badge.textContent = count > 99 ? '99+' : String(count);
+            }
+        }
+
+        window.refreshNotificationBadge = refreshUnreadCount;
+        setInterval(refreshUnreadCount, 30000);
     })();
     </script>
 </body>

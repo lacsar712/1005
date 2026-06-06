@@ -1,0 +1,305 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-800">Webhook 推送配置</h1>
+            <p class="text-sm text-gray-500 mt-1">管理通知事件的回调 URL，系统将在事件发生时向配置地址 POST JSON 数据</p>
+        </div>
+        <button id="addWebhookBtn" class="px-4 py-2 text-sm rounded-lg bg-primary text-white hover:bg-blue-600 transition flex items-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+            新建 Webhook
+        </button>
+    </div>
+
+    <!-- 列表 -->
+    <div id="webhookList" class="space-y-3">
+        {% for config in configs %}
+        <div class="webhook-card bg-white rounded-xl shadow-sm border border-gray-100 p-5" data-id="{{ config.id }}">
+            <div class="flex items-start justify-between gap-4">
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-3">
+                        <h3 class="font-medium text-gray-800">{{ config.name }}</h3>
+                        {% if config.is_active %}
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-green-50 text-green-700">
+                                <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+                                启用
+                            </span>
+                        {% else %}
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-500">
+                                <span class="w-1.5 h-1.5 rounded-full bg-gray-400"></span>
+                                停用
+                            </span>
+                        {% endif %}
+                    </div>
+                    <p class="text-sm text-gray-500 mt-1 break-all font-mono">{{ config.url }}</p>
+                    <div class="flex flex-wrap items-center gap-3 mt-2">
+                        <div class="flex flex-wrap items-center gap-1">
+                            {% for et in (config.event_types or []) %}
+                                <span class="inline-block px-2 py-0.5 rounded text-xs bg-blue-50 text-blue-700">
+                                    {{ event_type_options | selectattr('0', 'equalto', et) | map(attribute='1') | first or et }}
+                                </span>
+                            {% else %}
+                                <span class="text-xs text-gray-400">未订阅任何事件</span>
+                            {% endfor %}
+                        </div>
+                        {% if config.last_triggered_at %}
+                            <span class="text-xs text-gray-400">上次触发：{{ config.last_triggered_at.strftime('%Y-%m-%d %H:%M') }}</span>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="flex items-center gap-2 flex-shrink-0">
+                    <button class="test-btn px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition">测试</button>
+                    <button class="edit-btn px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition">编辑</button>
+                    <button class="delete-btn px-3 py-1.5 text-xs rounded-lg border border-red-200 text-red-500 hover:bg-red-50 transition">删除</button>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">
+            <svg class="w-16 h-16 mx-auto text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
+            <p class="text-gray-400 mt-4">暂无 Webhook 配置</p>
+            <p class="text-xs text-gray-400 mt-1">点击右上角「新建 Webhook」添加第一个回调地址</p>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- 说明卡片 -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mt-6">
+        <h3 class="font-medium text-gray-800 mb-3 flex items-center gap-2">
+            <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            Payload 格式说明
+        </h3>
+        <div class="bg-gray-50 rounded-lg p-4 text-xs font-mono text-gray-600 overflow-x-auto">
+<pre>{
+  "event": "upload",
+  "timestamp": "2026-06-07T10:00:00",
+  "notification": {
+    "id": 1,
+    "type": "upload",
+    "type_label": "上传成功",
+    "title": "照片上传成功",
+    "content": "...",
+    "status": "success",
+    "is_read": false,
+    "data": { ... },
+    "created_at": "2026-06-07 10:00:00",
+    "children": [ ... ]
+  }
+}</pre>
+        </div>
+        <p class="text-xs text-gray-500 mt-3">
+            若配置了签名密钥（Secret），请求头 <code class="bg-gray-100 px-1 rounded">X-Webhook-Signature</code> 将包含 HMAC-SHA256 签名，格式为 <code class="bg-gray-100 px-1 rounded">sha256=hex_digest</code>。
+        </p>
+    </div>
+</div>
+
+<!-- Webhook 编辑/创建弹窗 -->
+<div id="webhookModal" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 hidden">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+            <h3 id="modalTitle" class="font-semibold text-gray-800">新建 Webhook</h3>
+            <button id="closeModal" class="text-gray-400 hover:text-gray-600">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+        </div>
+        <form id="webhookForm" class="p-6 space-y-4">
+            <input type="hidden" id="whId">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">名称</label>
+                <input type="text" id="whName" required placeholder="例如：CI/CD 通知"
+                    class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">回调 URL</label>
+                <input type="url" id="whUrl" required placeholder="https://example.com/webhook"
+                    class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">签名密钥（可选）</label>
+                <input type="text" id="whSecret" placeholder="用于签名验证的 secret"
+                    class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">订阅事件</label>
+                <div class="grid grid-cols-2 gap-2">
+                    {% for val, label in event_type_options %}
+                        <label class="flex items-center gap-2 p-2 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer">
+                            <input type="checkbox" name="event_types" value="{{ val }}" class="whEvent rounded border-gray-300 text-primary focus:ring-primary">
+                            <span class="text-sm text-gray-700">{{ label }}</span>
+                        </label>
+                    {% endfor %}
+                </div>
+            </div>
+            <label class="flex items-center gap-2">
+                <input type="checkbox" id="whActive" checked class="rounded border-gray-300 text-primary focus:ring-primary">
+                <span class="text-sm text-gray-700">启用此 Webhook</span>
+            </label>
+        </form>
+        <div class="px-6 py-4 border-t border-gray-100 flex items-center justify-end gap-3 bg-gray-50">
+            <button id="cancelBtn" type="button" class="px-4 py-2 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-white transition">取消</button>
+            <button id="saveBtn" type="button" class="px-4 py-2 text-sm rounded-lg bg-primary text-white hover:bg-blue-600 transition">保存</button>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    const modal = document.getElementById('webhookModal');
+    const modalTitle = document.getElementById('modalTitle');
+    const form = document.getElementById('webhookForm');
+    const whId = document.getElementById('whId');
+    const whName = document.getElementById('whName');
+    const whUrl = document.getElementById('whUrl');
+    const whSecret = document.getElementById('whSecret');
+    const whActive = document.getElementById('whActive');
+    const whEvents = document.querySelectorAll('.whEvent');
+
+    function openModal(config) {
+        if (config) {
+            modalTitle.textContent = '编辑 Webhook';
+            whId.value = config.id;
+            whName.value = config.name || '';
+            whUrl.value = config.url || '';
+            whSecret.value = config.secret || '';
+            whActive.checked = config.is_active !== false;
+            whEvents.forEach(cb => cb.checked = (config.event_types || []).includes(cb.value));
+        } else {
+            modalTitle.textContent = '新建 Webhook';
+            form.reset();
+            whId.value = '';
+            whActive.checked = true;
+        }
+        modal.classList.remove('hidden');
+    }
+
+    function closeModal() {
+        modal.classList.add('hidden');
+    }
+
+    function collectFormData() {
+        return {
+            id: whId.value || null,
+            name: whName.value.trim(),
+            url: whUrl.value.trim(),
+            secret: whSecret.value.trim(),
+            event_types: Array.from(whEvents).filter(cb => cb.checked).map(cb => cb.value),
+            is_active: whActive.checked ? '1' : '0',
+        };
+    }
+
+    async function saveWebhook() {
+        const data = collectFormData();
+        if (!data.name || !data.url) {
+            Swal.fire({ icon: 'warning', title: '请填写名称和 URL', showConfirmButton: false, timer: 1500 });
+            return;
+        }
+        try {
+            let resp;
+            if (data.id) {
+                resp = await fetch(`/api/admin/webhooks/${data.id}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data),
+                });
+            } else {
+                resp = await fetch('/api/admin/webhooks', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data),
+                });
+            }
+            const result = await resp.json();
+            if (result.success) {
+                closeModal();
+                Swal.fire({ icon: 'success', title: data.id ? '已更新' : '已创建', showConfirmButton: false, timer: 1500 });
+                setTimeout(() => location.reload(), 600);
+            } else {
+                Swal.fire({ icon: 'error', title: result.message || '保存失败', showConfirmButton: false, timer: 1500 });
+            }
+        } catch (e) {
+            Swal.fire({ icon: 'error', title: '请求失败', showConfirmButton: false, timer: 1500 });
+        }
+    }
+
+    async function deleteWebhook(id, card) {
+        const result = await Swal.fire({
+            title: '确定删除？',
+            text: '删除后无法恢复',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#ef4444',
+            cancelButtonColor: '#6b7280',
+            confirmButtonText: '删除',
+            cancelButtonText: '取消',
+        });
+        if (!result.isConfirmed) return;
+        try {
+            const resp = await fetch(`/api/admin/webhooks/${id}`, { method: 'DELETE' });
+            const data = await resp.json();
+            if (data.success) {
+                card.style.opacity = '0';
+                setTimeout(() => { card.remove(); if (!document.querySelector('.webhook-card')) location.reload(); }, 200);
+                Swal.fire({ icon: 'success', title: '已删除', showConfirmButton: false, timer: 1500 });
+            } else {
+                Swal.fire({ icon: 'error', title: data.message || '删除失败', showConfirmButton: false, timer: 1500 });
+            }
+        } catch (e) {}
+    }
+
+    async function testWebhook(id) {
+        try {
+            const resp = await fetch(`/api/admin/webhooks/${id}/test`, { method: 'POST' });
+            const data = await resp.json();
+            Swal.fire({
+                icon: data.success ? 'success' : 'error',
+                title: data.success ? '测试成功' : '测试失败',
+                text: data.message || '',
+                showConfirmButton: false,
+                timer: 2000,
+            });
+        } catch (e) {
+            Swal.fire({ icon: 'error', title: '请求失败', showConfirmButton: false, timer: 1500 });
+        }
+    }
+
+    document.getElementById('addWebhookBtn').addEventListener('click', () => openModal());
+    document.getElementById('closeModal').addEventListener('click', closeModal);
+    document.getElementById('cancelBtn').addEventListener('click', closeModal);
+    document.getElementById('saveBtn').addEventListener('click', saveWebhook);
+    modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+
+    document.getElementById('webhookList').addEventListener('click', function(e) {
+        const card = e.target.closest('.webhook-card');
+        if (!card) return;
+        const id = card.dataset.id;
+
+        if (e.target.closest('.edit-btn')) {
+            const name = card.querySelector('h3').textContent;
+            const url = card.querySelector('.font-mono').textContent;
+            const isActive = card.querySelector('.bg-green-50') !== null;
+            const eventBadges = card.querySelectorAll('.bg-blue-50');
+            const eventTypes = [];
+            eventBadges.forEach(b => {
+                const t = b.textContent.trim();
+                const map = {
+                    '上传事件': 'upload',
+                    '删除事件': 'delete',
+                    'ZIP 导出事件': 'export_zip',
+                    '回收站清理事件': 'recycle_clear',
+                    '系统事件': 'system',
+                    '所有事件': 'all',
+                };
+                if (map[t]) eventTypes.push(map[t]);
+            });
+            openModal({ id, name, url, is_active: isActive, event_types: eventTypes });
+        } else if (e.target.closest('.delete-btn')) {
+            deleteWebhook(id, card);
+        } else if (e.target.closest('.test-btn')) {
+            testWebhook(id);
+        }
+    });
+})();
+</script>
+{% endblock %}
