@@ -1,0 +1,265 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="flex flex-col lg:flex-row gap-6">
+
+    <aside class="lg:w-64 flex-shrink-0">
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 sticky top-20">
+            <h3 class="text-sm font-semibold text-gray-800 mb-4 flex items-center">
+                <svg class="w-4 h-4 mr-1.5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path></svg>
+                筛选条件
+            </h3>
+
+            <form id="filterForm" method="GET" action="{{ url_for('search') }}" class="space-y-5">
+                <input type="hidden" name="q" value="{{ query }}">
+
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1.5">所属相册</label>
+                    <select name="album_id" class="w-full px-2.5 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition">
+                        <option value="">全部相册</option>
+                        {% for alb in all_albums %}
+                        <option value="{{ alb.id }}" {% if filter_album_id == alb.id %}selected{% endif %}>{{ alb.title }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1.5">上传/拍摄日期</label>
+                    <div class="space-y-2">
+                        <input type="date" name="date_from" value="{{ date_from }}" placeholder="起始日期" class="w-full px-2.5 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition">
+                        <input type="date" name="date_to" value="{{ date_to }}" placeholder="结束日期" class="w-full px-2.5 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition">
+                    </div>
+                </div>
+
+                {% if all_formats %}
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1.5">图片格式</label>
+                    <select name="format" class="w-full px-2.5 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition">
+                        <option value="">全部格式</option>
+                        {% for fmt in all_formats %}
+                        <option value="{{ fmt }}" {% if filter_format == fmt %}selected{% endif %}>{{ fmt.upper() }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endif %}
+
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1.5">GPS 信息</label>
+                    <select name="has_gps" class="w-full px-2.5 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition">
+                        <option value="">全部</option>
+                        <option value="yes" {% if filter_gps == 'yes' %}selected{% endif %}>含 GPS</option>
+                        <option value="no" {% if filter_gps == 'no' %}selected{% endif %}>无 GPS</option>
+                    </select>
+                </div>
+
+                <div class="flex gap-2 pt-2">
+                    <button type="submit" class="flex-1 bg-primary hover:bg-blue-600 text-white text-sm px-3 py-2 rounded-lg transition">
+                        应用筛选
+                    </button>
+                    <a href="{{ url_for('search', q=query) }}" class="flex-1 text-center text-sm text-gray-600 hover:text-gray-800 border border-gray-200 px-3 py-2 rounded-lg hover:bg-gray-50 transition">
+                        重置
+                    </a>
+                </div>
+            </form>
+
+            {% if active_filters %}
+            <div class="mt-5 pt-4 border-t border-gray-100">
+                <div class="text-xs text-gray-500 mb-2">已选条件：</div>
+                <div class="flex flex-wrap gap-1.5">
+                    {% if active_filters.album_id %}
+                    {% set alb_obj = all_albums | selectattr('id', 'equalto', active_filters.album_id) | first %}
+                    <span class="inline-flex items-center text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">
+                        相册: {{ alb_obj.title if alb_obj else active_filters.album_id }}
+                    </span>
+                    {% endif %}
+                    {% if active_filters.date_from %}
+                    <span class="inline-flex items-center text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">
+                        起: {{ active_filters.date_from }}
+                    </span>
+                    {% endif %}
+                    {% if active_filters.date_to %}
+                    <span class="inline-flex items-center text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">
+                        止: {{ active_filters.date_to }}
+                    </span>
+                    {% endif %}
+                    {% if active_filters.format %}
+                    <span class="inline-flex items-center text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">
+                        格式: {{ active_filters.format | upper }}
+                    </span>
+                    {% endif %}
+                    {% if active_filters.has_gps %}
+                    <span class="inline-flex items-center text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">
+                        GPS: {{ '有' if active_filters.has_gps == 'yes' else '无' }}
+                    </span>
+                    {% endif %}
+                </div>
+                <div class="mt-3">
+                    <button id="copyShareLink" class="text-xs text-primary hover:text-blue-700 hover:underline transition flex items-center">
+                        <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"></path></svg>
+                        复制分享链接
+                    </button>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </aside>
+
+    <main class="flex-1 min-w-0">
+        <div class="mb-6">
+            <div class="flex items-center text-sm text-gray-500 mb-3">
+                <a href="{{ url_for('index') }}" class="hover:text-primary transition flex items-center">
+                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                    返回首页
+                </a>
+                <span class="mx-2">/</span>
+                <span class="text-gray-800 font-medium">搜索结果</span>
+            </div>
+            {% if query %}
+            <h1 class="text-2xl font-bold text-gray-900 mb-1">
+                搜索：<span class="text-primary">"{{ query }}"</span>
+            </h1>
+            <p class="text-sm text-gray-500">
+                共找到 <span class="font-semibold text-gray-800">{{ total_count }}</span> 条相关结果
+                （相册 {{ matched_albums|length }} · 照片 {{ matched_photos|length }}）
+            </p>
+            {% else %}
+            <h1 class="text-2xl font-bold text-gray-900 mb-1">全站搜索</h1>
+            <p class="text-sm text-gray-500">输入关键词开始搜索相册和照片</p>
+            {% endif %}
+        </div>
+
+        {% if not query %}
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">
+            <svg class="w-16 h-16 text-gray-200 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+            <p class="text-gray-500 mb-2">请使用顶部搜索框输入关键词</p>
+            <p class="text-xs text-gray-400">支持相册标题/描述、照片文件名、说明、相机型号、拍摄时间、标签等字段的模糊搜索</p>
+        </div>
+        {% else %}
+
+        {% if matched_albums %}
+        <section class="mb-10">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-lg font-semibold text-gray-800 flex items-center">
+                    <svg class="w-5 h-5 mr-1.5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                    相册
+                    <span class="ml-2 text-xs font-normal text-gray-400">{{ matched_albums|length }}</span>
+                </h2>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                {% for album in matched_albums %}
+                <a href="{{ album.url }}" class="block bg-white rounded-xl shadow-sm hover:shadow-md transition overflow-hidden border border-gray-100 group">
+                    <div class="relative aspect-[4/3] bg-gray-100 overflow-hidden">
+                        {% if album.cover_photo %}
+                        <img src="{{ url_for('static', filename='uploads/' + album.cover_photo.filename) }}" alt="{{ album.title_raw }}" class="w-full h-full object-cover transform group-hover:scale-105 transition duration-500">
+                        {% else %}
+                        <div class="flex items-center justify-center w-full h-full text-gray-300">
+                            <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                        </div>
+                        {% endif %}
+                    </div>
+                    <div class="p-3">
+                        <h3 class="text-sm font-semibold text-gray-900 truncate mb-1" title="{{ album.title_raw }}">
+                            {{ album.title | safe }}
+                        </h3>
+                        {% if album.description_raw %}
+                        <p class="text-xs text-gray-500 line-clamp-2">{{ album.description | safe }}</p>
+                        {% endif %}
+                        <p class="text-xs text-gray-400 mt-2">{{ album.photo_count }} 张照片</p>
+                    </div>
+                </a>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+
+        {% if matched_photos %}
+        <section>
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-lg font-semibold text-gray-800 flex items-center">
+                    <svg class="w-5 h-5 mr-1.5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                    照片
+                    <span class="ml-2 text-xs font-normal text-gray-400">{{ matched_photos|length }}</span>
+                </h2>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {% for photo in matched_photos %}
+                <div class="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100 hover:shadow-md transition group">
+                    <a href="{{ photo.url }}" class="block relative aspect-video bg-gray-100 overflow-hidden">
+                        <img src="{{ url_for('static', filename='uploads/' + photo.filename) }}" alt="{{ photo.original_filename_raw }}" class="w-full h-full object-cover transform group-hover:scale-105 transition duration-500">
+                        {% if photo.has_gps %}
+                        <div class="absolute top-2 right-2 bg-green-500/90 backdrop-blur-sm text-white text-xs px-2 py-0.5 rounded-full flex items-center">
+                            <svg class="w-3 h-3 mr-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                            GPS
+                        </div>
+                        {% endif %}
+                        {% if photo.image_format %}
+                        <div class="absolute top-2 left-2 bg-black/50 backdrop-blur-sm text-white text-xs px-2 py-0.5 rounded-full uppercase font-medium">
+                            {{ photo.image_format }}
+                        </div>
+                        {% endif %}
+                    </a>
+                    <div class="p-3 space-y-1.5">
+                        <div class="text-sm font-medium text-gray-900 truncate" title="{{ photo.original_filename_raw }}">
+                            {{ photo.original_filename | safe }}
+                        </div>
+                        {% if photo.description_raw %}
+                        <div class="text-xs text-gray-600 line-clamp-2">
+                            {{ photo.description | safe }}
+                        </div>
+                        {% endif %}
+                        <div class="flex flex-wrap gap-1.5 text-xs text-gray-500 pt-1">
+                            {% if photo.album %}
+                            <span class="inline-flex items-center">
+                                <svg class="w-3 h-3 mr-0.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                                <a href="{{ url_for('album_detail', album_id=photo.album_id) }}" class="hover:text-primary transition">{{ photo.album.title }}</a>
+                            </span>
+                            {% endif %}
+                            {% if photo.taken_at_raw %}
+                            <span class="inline-flex items-center">
+                                <svg class="w-3 h-3 mr-0.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                <span class="search-highlight">{{ photo.taken_at | safe }}</span>
+                            </span>
+                            {% endif %}
+                            {% if photo.camera_model_raw %}
+                            <span class="inline-flex items-center">
+                                <svg class="w-3 h-3 mr-0.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                                <span>{{ photo.camera_model | safe }}</span>
+                            </span>
+                            {% endif %}
+                        </div>
+                        {% if photo.tag_names_html %}
+                        <div class="flex flex-wrap gap-1 pt-1">
+                            <span class="text-xs text-gray-400">标签：</span>
+                            <span class="text-xs text-gray-600">{{ photo.tag_names_html | safe }}</span>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+
+        {% if not matched_albums and not matched_photos and query %}
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">
+            <svg class="w-16 h-16 text-gray-200 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            <p class="text-gray-700 font-medium mb-1">没有找到相关结果</p>
+            <p class="text-sm text-gray-400">试试其他关键词，或调整筛选条件</p>
+        </div>
+        {% endif %}
+
+        {% endif %}
+    </main>
+</div>
+
+<script>
+document.getElementById('copyShareLink')?.addEventListener('click', function() {
+    navigator.clipboard.writeText(window.location.href).then(function() {
+        const Toast = Swal.mixin({ toast: true, position: 'top', showConfirmButton: false, timer: 2000, timerProgressBar: true });
+        Toast.fire({ icon: 'success', title: '分享链接已复制到剪贴板' });
+    });
+});
+</script>
+{% endblock %}

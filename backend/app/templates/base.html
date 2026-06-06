@@ -25,11 +25,45 @@
     <nav class="bg-white shadow-sm sticky top-0 z-50">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex justify-between h-16">
-                <div class="flex">
+                <div class="flex items-center">
                     <a href="{{ url_for('index') }}" class="flex-shrink-0 flex items-center text-xl font-bold text-gray-800 hover:text-primary transition">
                         📸 {{ site_config.site_name }}
                     </a>
                 </div>
+
+                <div class="hidden md:flex items-center flex-1 max-w-md mx-6 relative" id="navSearchWrap">
+                    <form id="navSearchForm" action="{{ url_for('search') }}" method="GET" class="w-full relative">
+                        <div class="relative">
+                            <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                            <input type="text" name="q" id="navSearchInput" placeholder="搜索相册、照片、标签…"
+                                class="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-full text-sm bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
+                                autocomplete="off">
+                        </div>
+                        <div id="navSearchDropdown" class="hidden absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden z-50">
+                            <div id="searchHistorySection" class="hidden">
+                                <div class="px-3 py-2 text-xs text-gray-400 font-medium border-b border-gray-100 flex items-center justify-between">
+                                    <span class="flex items-center">
+                                        <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                        最近搜索
+                                    </span>
+                                    <button type="button" id="clearSearchHistory" class="text-primary hover:text-blue-700 hover:underline">清空</button>
+                                </div>
+                                <div id="searchHistoryList"></div>
+                            </div>
+                            <div id="searchSuggestSection" class="hidden">
+                                <div class="px-3 py-2 text-xs text-gray-400 font-medium border-b border-gray-100 flex items-center">
+                                    <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                                    相册建议
+                                </div>
+                                <div id="searchSuggestList"></div>
+                            </div>
+                            <div id="searchDropdownEmpty" class="hidden px-3 py-4 text-center text-sm text-gray-400">
+                                无匹配结果
+                            </div>
+                        </div>
+                    </form>
+                </div>
+
                 <div class="flex items-center space-x-4">
                     <a href="{{ url_for('browse_tags') }}" class="text-sm text-gray-600 hover:text-primary">按标签浏览</a>
                     {% if current_user.is_authenticated %}
@@ -140,6 +174,180 @@
             }
             return true;
         }
+    </script>
+
+    <!-- 导航栏搜索框 JS -->
+    <script>
+    (function() {
+        const SEARCH_HISTORY_KEY = 'album_search_history';
+        const MAX_HISTORY = 5;
+
+        const form = document.getElementById('navSearchForm');
+        const input = document.getElementById('navSearchInput');
+        const dropdown = document.getElementById('navSearchDropdown');
+        const historySection = document.getElementById('searchHistorySection');
+        const historyList = document.getElementById('searchHistoryList');
+        const suggestSection = document.getElementById('searchSuggestSection');
+        const suggestList = document.getElementById('searchSuggestList');
+        const emptyMsg = document.getElementById('searchDropdownEmpty');
+        const clearHistoryBtn = document.getElementById('clearSearchHistory');
+
+        if (!input || !dropdown) return;
+
+        function getHistory() {
+            try {
+                return JSON.parse(localStorage.getItem(SEARCH_HISTORY_KEY) || '[]');
+            } catch (e) { return []; }
+        }
+
+        function saveHistory(list) {
+            try {
+                localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(list.slice(0, MAX_HISTORY)));
+            } catch (e) {}
+        }
+
+        function addHistory(keyword) {
+            keyword = (keyword || '').trim();
+            if (!keyword) return;
+            let list = getHistory().filter(k => k !== keyword);
+            list.unshift(keyword);
+            saveHistory(list);
+        }
+
+        function renderHistory() {
+            const list = getHistory();
+            if (list.length === 0) {
+                historySection.classList.add('hidden');
+                return;
+            }
+            historySection.classList.remove('hidden');
+            historyList.innerHTML = list.map(kw => `
+                <div class="search-history-item flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 cursor-pointer group" data-keyword="${escapeHtml(kw)}">
+                    <span class="flex items-center flex-1 truncate">
+                        <svg class="w-3.5 h-3.5 mr-2 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        <span class="truncate">${escapeHtml(kw)}</span>
+                    </span>
+                    <button type="button" class="search-history-remove opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition ml-2 flex-shrink-0" data-keyword="${escapeHtml(kw)}">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        let suggestTimer = null;
+        async function fetchSuggestions(query) {
+            query = (query || '').trim();
+            if (!query) {
+                suggestSection.classList.add('hidden');
+                suggestList.innerHTML = '';
+                return;
+            }
+            if (suggestTimer) clearTimeout(suggestTimer);
+            suggestTimer = setTimeout(async () => {
+                try {
+                    const resp = await fetch(`/api/search/autocomplete?q=${encodeURIComponent(query)}`);
+                    const data = await resp.json();
+                    if (data.success && data.suggestions && data.suggestions.length > 0) {
+                        suggestSection.classList.remove('hidden');
+                        emptyMsg.classList.add('hidden');
+                        suggestList.innerHTML = data.suggestions.map(s => `
+                            <a href="${s.url}" class="search-suggest-item flex items-center px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 cursor-pointer" data-url="${s.url}">
+                                <svg class="w-3.5 h-3.5 mr-2 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                                <span class="truncate">${escapeHtml(s.title)}</span>
+                            </a>
+                        `).join('');
+                    } else {
+                        suggestSection.classList.add('hidden');
+                        suggestList.innerHTML = '';
+                        if (getHistory().length === 0) {
+                            emptyMsg.classList.remove('hidden');
+                        }
+                    }
+                } catch (e) {
+                    suggestSection.classList.add('hidden');
+                }
+            }, 150);
+        }
+
+        function showDropdown() {
+            dropdown.classList.remove('hidden');
+            renderHistory();
+            const q = input.value.trim();
+            if (q) {
+                fetchSuggestions(q);
+            } else {
+                suggestSection.classList.add('hidden');
+                emptyMsg.classList.add('hidden');
+            }
+        }
+
+        function hideDropdown() {
+            setTimeout(() => {
+                dropdown.classList.add('hidden');
+            }, 150);
+        }
+
+        input.addEventListener('focus', showDropdown);
+        input.addEventListener('blur', hideDropdown);
+        input.addEventListener('input', function() {
+            showDropdown();
+        });
+
+        form.addEventListener('submit', function(e) {
+            const kw = input.value.trim();
+            if (kw) {
+                addHistory(kw);
+            } else {
+                e.preventDefault();
+            }
+        });
+
+        dropdown.addEventListener('click', function(e) {
+            const historyItem = e.target.closest('.search-history-item');
+            const removeBtn = e.target.closest('.search-history-remove');
+            const suggestItem = e.target.closest('.search-suggest-item');
+
+            if (removeBtn) {
+                e.stopPropagation();
+                const kw = removeBtn.getAttribute('data-keyword');
+                const list = getHistory().filter(k => k !== kw);
+                saveHistory(list);
+                renderHistory();
+                if (getHistory().length === 0 && suggestSection.classList.contains('hidden')) {
+                    emptyMsg.classList.remove('hidden');
+                }
+                return;
+            }
+
+            if (historyItem) {
+                const kw = historyItem.getAttribute('data-keyword');
+                addHistory(kw);
+                window.location.href = `/search?q=${encodeURIComponent(kw)}`;
+                return;
+            }
+        });
+
+        clearHistoryBtn?.addEventListener('click', function(e) {
+            e.stopPropagation();
+            saveHistory([]);
+            renderHistory();
+            if (suggestSection.classList.contains('hidden')) {
+                emptyMsg.classList.remove('hidden');
+            }
+        });
+
+        document.addEventListener('click', function(e) {
+            if (!form.contains(e.target)) {
+                dropdown.classList.add('hidden');
+            }
+        });
+    })();
     </script>
 </body>
 </html>

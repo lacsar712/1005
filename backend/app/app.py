@@ -1,12 +1,15 @@
 import io
 import csv
 import os
+import re
 import uuid
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, redirect, url_for, flash, abort, send_from_directory, jsonify, make_response
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.utils import secure_filename
-from sqlalchemy import or_, and_
+from sqlalchemy import or_, and_, func
+from PIL import Image
+from PIL.ExifTags import TAGS, GPSTAGS
 from .db import db, Album, Photo, Tag, Comment, SiteConfig, OperationLog
 
 # 常量设置
@@ -98,6 +101,163 @@ def diff_snapshots(before, after):
         if b != a:
             diffs.append({'field': key, 'before': b, 'after': a})
     return diffs
+
+
+def levenshtein_distance(s1, s2):
+    """计算两个字符串之间的编辑距离"""
+    if len(s1) < len(s2):
+        return levenshtein_distance(s2, s1)
+    if len(s2) == 0:
+        return len(s1)
+    s1 = s1.lower()
+    s2 = s2.lower()
+    previous_row = range(len(s2) + 1)
+    for i, c1 in enumerate(s1):
+        current_row = [i + 1]
+        for j, c2 in enumerate(s2):
+            insertions = previous_row[j + 1] + 1
+            deletions = current_row[j] + 1
+            substitutions = previous_row[j] + (c1 != c2)
+            current_row.append(min(insertions, deletions, substitutions))
+        previous_row = current_row
+    return previous_row[-1]
+
+
+def fuzzy_match(query, text, max_distance=2):
+    """判断文本是否匹配查询：支持子串包含 + 基于编辑距离的模糊容错"""
+    if not query or not text:
+        return False
+    q = query.lower().strip()
+    t = text.lower()
+    if not q:
+        return False
+    if q in t:
+        return True
+    words = t.split()
+    for word in words:
+        word_clean = word.strip(' ,.;:!?()[]{}"\'')
+        if not word_clean:
+            continue
+        if q in word_clean:
+            return True
+        word_len = len(word_clean)
+        query_len = len(q)
+        if word_len < 3 or query_len < 3:
+            continue
+        allowed = max_distance if max(word_len, query_len) >= 5 else 1
+        if levenshtein_distance(q, word_clean) <= allowed:
+            return True
+    return False
+
+
+def highlight_keywords(text, query):
+    """在文本中高亮匹配的关键词，返回带 <mark> 的 HTML"""
+    if not text or not query:
+        return text or ''
+    q = query.strip()
+    if not q:
+        return text
+    q_lower = q.lower()
+    text_lower = text.lower()
+    result = []
+    i = 0
+    used = set()
+    while i < len(text):
+        matched = False
+        for length in range(min(len(q) + 3, len(text) - i), max(1, len(q) - 3), -1):
+            if length <= 0:
+                continue
+            segment = text_lower[i:i + length]
+            if q_lower in segment:
+                idx = segment.find(q_lower)
+                result.append(text[i:i + idx])
+                result.append(f'<mark class="bg-yellow-200 text-yellow-900 px-0.5 rounded">{text[i + idx:i + idx + len(q)]}</mark>')
+                i += idx + len(q)
+                matched = True
+                break
+            if levenshtein_distance(q_lower, segment) <= 2 and length >= 3:
+                result.append(f'<mark class="bg-yellow-100 text-yellow-800 px-0.5 rounded border border-yellow-300">{text[i:i + length]}</mark>')
+                i += length
+                matched = True
+                break
+        if not matched:
+            result.append(text[i])
+            i += 1
+    return ''.join(result)
+
+
+def _dms_to_degrees(dms, ref):
+    """将 EXIF GPS 的度分秒转换为十进制度数"""
+    try:
+        degrees = float(dms[0])
+        minutes = float(dms[1])
+        seconds = float(dms[2])
+        result = degrees + (minutes / 60.0) + (seconds / 3600.0)
+        if ref in ('S', 'W'):
+            result = -result
+        return result
+    except Exception:
+        return None
+
+
+def extract_exif(file_path):
+    """从图片文件提取 EXIF 信息，返回字典"""
+    result = {
+        'camera_model': None,
+        'taken_at': None,
+        'gps_latitude': None,
+        'gps_longitude': None,
+    }
+    try:
+        with Image.open(file_path) as img:
+            exif_data = img._getexif()
+            if not exif_data:
+                return result
+            exif = {}
+            for tag_id, value in exif_data.items():
+                tag = TAGS.get(tag_id, tag_id)
+                exif[tag] = value
+            make = exif.get('Make', '')
+            model = exif.get('Model', '')
+            camera = ' '.join([str(make).strip(), str(model).strip()]).strip()
+            if camera:
+                result['camera_model'] = camera[:100]
+            dt_original = exif.get('DateTimeOriginal') or exif.get('DateTime')
+            if dt_original:
+                try:
+                    result['taken_at'] = datetime.strptime(str(dt_original), '%Y:%m:%d %H:%M:%S')
+                except (ValueError, TypeError):
+                    pass
+            gps_info_tag = None
+            for tag_id, value in exif_data.items():
+                if TAGS.get(tag_id) == 'GPSInfo':
+                    gps_info_tag = value
+                    break
+            if gps_info_tag:
+                gps = {}
+                for k, v in gps_info_tag.items():
+                    gps[GPSTAGS.get(k, k)] = v
+                lat = gps.get('GPSLatitude')
+                lat_ref = gps.get('GPSLatitudeRef')
+                lon = gps.get('GPSLongitude')
+                lon_ref = gps.get('GPSLongitudeRef')
+                if lat and lat_ref:
+                    result['gps_latitude'] = _dms_to_degrees(lat, lat_ref)
+                if lon and lon_ref:
+                    result['gps_longitude'] = _dms_to_degrees(lon, lon_ref)
+    except Exception:
+        pass
+    return result
+
+
+def get_image_format(filename):
+    """从文件名获取图片格式"""
+    if '.' in filename:
+        ext = filename.rsplit('.', 1)[1].lower()
+        if ext == 'jpeg':
+            ext = 'jpg'
+        return ext
+    return None
 
 
 DEFAULT_SITE_CONFIG = {
@@ -354,9 +514,22 @@ def create_app():
 
                     unique_filename = f"{uuid.uuid4().hex}.{extension}"
                     
-                    file.save(os.path.join(app.config['UPLOAD_FOLDER'], unique_filename))
-                    
-                    new_photo = Photo(filename=unique_filename, original_filename=original_filename, album_id=album.id)
+                    saved_path = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
+                    file.save(saved_path)
+
+                    exif_info = extract_exif(saved_path)
+                    img_format = get_image_format(original_filename)
+
+                    new_photo = Photo(
+                        filename=unique_filename,
+                        original_filename=original_filename,
+                        album_id=album.id,
+                        camera_model=exif_info['camera_model'],
+                        taken_at=exif_info['taken_at'],
+                        gps_latitude=exif_info['gps_latitude'],
+                        gps_longitude=exif_info['gps_longitude'],
+                        image_format=img_format
+                    )
                     db.session.add(new_photo)
                     db.session.flush()
                     uploaded_photos.append(new_photo)
@@ -772,6 +945,169 @@ def create_app():
         data['after_data'] = log.after_data
         data['diffs'] = diff_snapshots(log.before_data or {}, log.after_data or {})
         return jsonify({'success': True, 'log': data})
+
+    # --- 全站搜索路由 ---
+
+    @app.route('/api/search/autocomplete')
+    def api_search_autocomplete():
+        """相册标题前缀自动补全 API"""
+        query = request.args.get('q', '').strip()
+        if not query:
+            return jsonify({'success': True, 'suggestions': []})
+        q_lower = query.lower()
+        albums = Album.query.all()
+        suggestions = []
+        for album in albums:
+            title = album.title or ''
+            if title.lower().startswith(q_lower) or q_lower in title.lower():
+                suggestions.append({
+                    'id': album.id,
+                    'title': title,
+                    'url': url_for('album_detail', album_id=album.id)
+                })
+            if len(suggestions) >= 8:
+                break
+        return jsonify({'success': True, 'suggestions': suggestions})
+
+    @app.route('/search')
+    def search():
+        """全站搜索结果页"""
+        query = request.args.get('q', '').strip()
+        filter_album_id = request.args.get('album_id', type=int)
+        date_from = request.args.get('date_from', '').strip()
+        date_to = request.args.get('date_to', '').strip()
+        filter_format = request.args.get('format', '').strip()
+        filter_gps = request.args.get('has_gps', '').strip()
+
+        matched_albums = []
+        matched_photos = []
+
+        all_albums = Album.query.order_by(Album.title.asc()).all()
+        all_formats = sorted(set(
+            f for f in db.session.query(Photo.image_format).distinct().all()
+            if f and f[0]
+        ), key=lambda x: x[0].lower())
+        all_formats = [f[0] for f in all_formats]
+
+        if query:
+            albums_raw = Album.query.all()
+            for album in albums_raw:
+                text_parts = [album.title or '', album.description or '']
+                if any(fuzzy_match(query, t) for t in text_parts):
+                    matched_albums.append(album)
+
+            photos_raw = Photo.query.all()
+            for photo in photos_raw:
+                tag_names = ' '.join([t.name for t in photo.tags.all()])
+                taken_at_str = photo.taken_at.strftime('%Y-%m-%d %H:%M:%S') if photo.taken_at else ''
+                text_parts = [
+                    photo.original_filename or '',
+                    photo.description or '',
+                    photo.camera_model or '',
+                    taken_at_str,
+                    tag_names,
+                ]
+                if any(fuzzy_match(query, t) for t in text_parts):
+                    matched_photos.append(photo)
+
+            if filter_album_id:
+                matched_photos = [p for p in matched_photos if p.album_id == filter_album_id]
+
+            if date_from:
+                try:
+                    dt_from = datetime.strptime(date_from, '%Y-%m-%d')
+                    matched_photos = [
+                        p for p in matched_photos
+                        if (p.taken_at or p.uploaded_at) >= dt_from
+                    ]
+                except ValueError:
+                    pass
+
+            if date_to:
+                try:
+                    dt_to = datetime.strptime(date_to, '%Y-%m-%d') + timedelta(days=1)
+                    matched_photos = [
+                        p for p in matched_photos
+                        if (p.taken_at or p.uploaded_at) < dt_to
+                    ]
+                except ValueError:
+                    pass
+
+            if filter_format:
+                matched_photos = [p for p in matched_photos if p.image_format == filter_format]
+
+            if filter_gps == 'yes':
+                matched_photos = [p for p in matched_photos if p.gps_latitude is not None and p.gps_longitude is not None]
+            elif filter_gps == 'no':
+                matched_photos = [p for p in matched_photos if p.gps_latitude is None or p.gps_longitude is None]
+
+        matched_albums_data = []
+        for album in matched_albums:
+            matched_albums_data.append({
+                'id': album.id,
+                'title': highlight_keywords(album.title or '', query),
+                'title_raw': album.title or '',
+                'description': highlight_keywords(album.description or '', query),
+                'description_raw': album.description or '',
+                'photo_count': len(album.photos),
+                'cover_photo': album.photos[-1] if album.photos else None,
+                'url': url_for('album_detail', album_id=album.id),
+                'created_at': album.created_at,
+            })
+
+        matched_photos_data = []
+        for photo in matched_photos:
+            tag_names_html = ', '.join([
+                highlight_keywords(t.name, query) for t in photo.tags.all()
+            ])
+            taken_at = photo.taken_at or photo.uploaded_at
+            taken_at_str = taken_at.strftime('%Y-%m-%d %H:%M:%S') if taken_at else ''
+            matched_photos_data.append({
+                'id': photo.id,
+                'original_filename': highlight_keywords(photo.original_filename or '', query),
+                'original_filename_raw': photo.original_filename or '',
+                'description': highlight_keywords(photo.description or '', query),
+                'description_raw': photo.description or '',
+                'camera_model': highlight_keywords(photo.camera_model or '', query),
+                'camera_model_raw': photo.camera_model or '',
+                'taken_at': highlight_keywords(taken_at_str, query),
+                'taken_at_raw': taken_at_str,
+                'has_gps': photo.gps_latitude is not None and photo.gps_longitude is not None,
+                'image_format': photo.image_format or '',
+                'tag_names_html': tag_names_html,
+                'album': Album.query.get(photo.album_id),
+                'album_id': photo.album_id,
+                'filename': photo.filename,
+                'url': url_for('album_detail', album_id=photo.album_id),
+            })
+
+        active_filters = {}
+        if filter_album_id:
+            active_filters['album_id'] = filter_album_id
+        if date_from:
+            active_filters['date_from'] = date_from
+        if date_to:
+            active_filters['date_to'] = date_to
+        if filter_format:
+            active_filters['format'] = filter_format
+        if filter_gps:
+            active_filters['has_gps'] = filter_gps
+
+        return render_template(
+            'search.html',
+            query=query,
+            matched_albums=matched_albums_data,
+            matched_photos=matched_photos_data,
+            all_albums=all_albums,
+            all_formats=all_formats,
+            filter_album_id=filter_album_id,
+            date_from=date_from,
+            date_to=date_to,
+            filter_format=filter_format,
+            filter_gps=filter_gps,
+            active_filters=active_filters,
+            total_count=len(matched_albums_data) + len(matched_photos_data),
+        )
 
     return app
 

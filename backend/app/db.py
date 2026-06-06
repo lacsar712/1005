@@ -41,8 +41,14 @@ class Photo(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     filename = db.Column(db.String(100), nullable=False) # 存储的文件名 (UUID)
     original_filename = db.Column(db.String(100), nullable=False) # 原始文件名
+    description = db.Column(db.Text) # 照片说明
     album_id = db.Column(db.Integer, db.ForeignKey('album.id'), nullable=False) # 所属相册 ID
     uploaded_at = db.Column(db.DateTime, default=datetime.utcnow) # 上传时间 (UTC)
+    camera_model = db.Column(db.String(100)) # EXIF: 相机型号
+    taken_at = db.Column(db.DateTime) # EXIF: 拍摄时间
+    gps_latitude = db.Column(db.Float) # EXIF: GPS 纬度
+    gps_longitude = db.Column(db.Float) # EXIF: GPS 经度
+    image_format = db.Column(db.String(10)) # 图片格式 (jpg/png/gif/webp)
     tags = db.relationship('Tag', secondary=photo_tags, backref=db.backref('photos', lazy='dynamic'), lazy='dynamic')
     comments = db.relationship('Comment', backref='photo', lazy=True, cascade="all, delete-orphan")
 
