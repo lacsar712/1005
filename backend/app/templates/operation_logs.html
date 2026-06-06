@@ -1,0 +1,470 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="mb-6">
+    <div class="flex items-center text-sm text-gray-500 mb-4">
+        <a href="{{ url_for('index') }}" class="hover:text-primary transition flex items-center">
+            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+            返回首页
+        </a>
+        <span class="mx-2">/</span>
+        <span class="text-gray-800 font-medium">操作日志</span>
+    </div>
+
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+        <div>
+            <h1 class="text-3xl font-bold text-gray-900 mb-2">操作日志</h1>
+            <p class="text-gray-600">记录所有管理员的关键操作行为</p>
+        </div>
+        <div class="flex items-center space-x-3">
+            <div class="bg-white rounded-lg px-4 py-2 border border-gray-200 shadow-sm">
+                <span class="text-sm text-gray-500">匹配日志</span>
+                <span class="ml-2 text-lg font-bold text-gray-900">{{ total }}</span>
+                <span class="text-sm text-gray-500">条</span>
+            </div>
+            <a href="{{ url_for('export_logs_csv', operation_type=selected_types, keyword=keyword, date_from=date_from, date_to=date_to) }}"
+               class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg shadow transition flex items-center">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                导出 CSV
+            </a>
+        </div>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 mb-6">
+        <form id="filterForm" method="GET" class="space-y-4">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div class="md:col-span-1">
+                    <label class="block text-sm font-medium text-gray-700 mb-1.5">关键词搜索</label>
+                    <input type="text" name="keyword" value="{{ keyword }}" placeholder="搜索摘要、资源..."
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1.5">开始日期</label>
+                    <input type="date" name="date_from" value="{{ date_from }}"
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1.5">结束日期</label>
+                    <input type="date" name="date_to" value="{{ date_to }}"
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition">
+                </div>
+                <div class="flex items-end">
+                    <button type="submit" class="w-full bg-primary hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition flex items-center justify-center">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                        筛选
+                    </button>
+                </div>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">操作类型（可多选）</label>
+                <div class="flex flex-wrap gap-2">
+                    {% for type_key, type_label in operation_types %}
+                    <label class="inline-flex items-center px-3 py-1.5 rounded-full text-sm cursor-pointer transition
+                                {% if type_key in selected_types %}bg-primary text-white{% else %}bg-gray-100 text-gray-700 hover:bg-gray-200{% endif %}">
+                        <input type="checkbox" name="operation_type" value="{{ type_key }}"
+                               {% if type_key in selected_types %}checked{% endif %}
+                               class="hidden peer">
+                        <span class="select-none">{{ type_label }}</span>
+                    </label>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="flex justify-end pt-2 border-t border-gray-100">
+                <a href="{{ url_for('operation_logs') }}" class="text-sm text-gray-500 hover:text-primary transition">
+                    重置筛选条件
+                </a>
+            </div>
+        </form>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        {% if logs %}
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead>
+                    <tr class="bg-gray-50 border-b border-gray-200">
+                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-44">操作时间</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-32">操作类型</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">摘要描述</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-28">资源</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-32">来源 IP</th>
+                        <th class="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider w-24">详情</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                    {% for log in logs %}
+                    <tr class="hover:bg-gray-50/50 transition {% if log.is_anomaly %}bg-red-50/60{% endif %}" data-log-id="{{ log.id }}">
+                        <td class="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
+                            {{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') }}
+                        </td>
+                        <td class="px-4 py-3 whitespace-nowrap">
+                            <div class="flex items-center">
+                                {% if log.is_anomaly %}
+                                <span class="inline-flex items-center mr-2" title="异常操作">
+                                    <svg class="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                                </span>
+                                {% endif %}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                                            {% if log.operation_type.startswith('auth') %}bg-blue-100 text-blue-800
+                                            {% elif log.operation_type.startswith('album') %}bg-purple-100 text-purple-800
+                                            {% elif log.operation_type.startswith('photo') %}bg-indigo-100 text-indigo-800
+                                            {% elif log.operation_type.startswith('tag') %}bg-amber-100 text-amber-800
+                                            {% elif log.operation_type == 'comment_delete' %}bg-pink-100 text-pink-800
+                                            {% elif log.operation_type == 'settings_update' %}bg-teal-100 text-teal-800
+                                            {% else %}bg-gray-100 text-gray-800{% endif %}">
+                                    {{ log.operation_type_label }}
+                                </span>
+                            </div>
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-800">
+                            <div class="flex items-center">
+                                {% if log.children.count() > 0 %}
+                                <button onclick="toggleChildren({{ log.id }})" class="mr-2 text-gray-400 hover:text-gray-600 transition" data-toggle-btn="{{ log.id }}">
+                                    <svg class="w-4 h-4 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" data-chevron="{{ log.id }}"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                                </button>
+                                {% else %}
+                                <span class="w-4 mr-2 inline-block"></span>
+                                {% endif %}
+                                <span class="truncate max-w-xl">{{ log.summary }}</span>
+                            </div>
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">
+                            {% if log.resource_type %}
+                            <span class="text-gray-400">{{ log.resource_type }}:</span>
+                            <span class="font-mono text-xs">{{ log.resource_id }}</span>
+                            {% else %}
+                            <span class="text-gray-300">-</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-500 font-mono whitespace-nowrap">
+                            {{ log.ip_address or '-' }}
+                        </td>
+                        <td class="px-4 py-3 text-center whitespace-nowrap">
+                            <div class="flex items-center justify-center space-x-1">
+                                {% if log.before_data or log.after_data %}
+                                <button onclick="showDiff({{ log.id }})" class="text-primary hover:text-blue-700 p-1.5 rounded hover:bg-blue-50 transition" title="查看变更快照">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                                </button>
+                                {% endif %}
+                                <button onclick="showDetail({{ log.id }})" class="text-gray-500 hover:text-gray-700 p-1.5 rounded hover:bg-gray-100 transition" title="查看详情">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% if log.children.count() > 0 %}
+                    <tr class="hidden" data-children-row="{{ log.id }}">
+                        <td colspan="6" class="px-0 py-0">
+                            <div class="bg-gray-50/80 border-t border-gray-100">
+                                <table class="w-full">
+                                    <tbody class="divide-y divide-gray-100">
+                                        {% for child in log.children.all() %}
+                                        <tr class="hover:bg-white/70 transition">
+                                            <td class="pl-12 pr-4 py-2.5 text-xs text-gray-500 whitespace-nowrap">
+                                                {{ child.created_at.strftime('%Y-%m-%d %H:%M:%S') }}
+                                            </td>
+                                            <td class="px-4 py-2.5 whitespace-nowrap">
+                                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-700">
+                                                    {{ child.operation_type_label }}
+                                                </span>
+                                            </td>
+                                            <td class="px-4 py-2.5 text-sm text-gray-600">
+                                                <span class="text-gray-400 mr-2">└</span>{{ child.summary }}
+                                            </td>
+                                            <td class="px-4 py-2.5 text-xs text-gray-500 whitespace-nowrap">
+                                                {% if child.resource_type %}
+                                                <span class="font-mono">{{ child.resource_type }}:{{ child.resource_id }}</span>
+                                                {% else %}-{% endif %}
+                                            </td>
+                                            <td class="px-4 py-2.5 text-xs text-gray-500 font-mono whitespace-nowrap">
+                                                {{ child.ip_address or '-' }}
+                                            </td>
+                                            <td class="px-4 py-2.5 text-center whitespace-nowrap">
+                                                {% if child.before_data or child.after_data %}
+                                                <button onclick="showDiff({{ child.id }})" class="text-primary hover:text-blue-700 text-xs">
+                                                    变更
+                                                </button>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endif %}
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if pagination.pages > 1 %}
+        <div class="px-5 py-4 border-t border-gray-200 flex items-center justify-between">
+            <div class="text-sm text-gray-500">
+                第 {{ pagination.page }} 页 / 共 {{ pagination.pages }} 页
+            </div>
+            <div class="flex items-center space-x-1">
+                {% if pagination.has_prev %}
+                <a href="{{ url_for('operation_logs', page=pagination.prev_num, operation_type=selected_types, keyword=keyword, date_from=date_from, date_to=date_to) }}"
+                   class="px-3 py-1.5 text-sm text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition">
+                    上一页
+                </a>
+                {% endif %}
+
+                {% for p in range(1, pagination.pages + 1) %}
+                    {% if p == pagination.page %}
+                    <span class="px-3 py-1.5 text-sm text-white bg-primary border border-primary rounded-lg">{{ p }}</span>
+                    {% elif p <= 3 or p >= pagination.pages - 2 or (p >= pagination.page - 1 and p <= pagination.page + 1) %}
+                    <a href="{{ url_for('operation_logs', page=p, operation_type=selected_types, keyword=keyword, date_from=date_from, date_to=date_to) }}"
+                       class="px-3 py-1.5 text-sm text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition">{{ p }}</a>
+                    {% elif p == 4 or p == pagination.pages - 3 %}
+                    <span class="px-2 text-gray-400">...</span>
+                    {% endif %}
+                {% endfor %}
+
+                {% if pagination.has_next %}
+                <a href="{{ url_for('operation_logs', page=pagination.next_num, operation_type=selected_types, keyword=keyword, date_from=date_from, date_to=date_to) }}"
+                   class="px-3 py-1.5 text-sm text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition">
+                    下一页
+                </a>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% else %}
+        <div class="text-center py-16">
+            <svg class="w-16 h-16 mx-auto text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
+            <p class="text-gray-500">暂无符合条件的操作日志</p>
+            <a href="{{ url_for('operation_logs') }}" class="text-sm text-primary hover:underline mt-2 inline-block">查看全部日志</a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<div id="diffModal" class="fixed inset-0 bg-black/50 z-50 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col">
+        <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+            <h3 class="text-lg font-semibold text-gray-900">字段变更快照</h3>
+            <button onclick="closeModal('diffModal')" class="text-gray-400 hover:text-gray-600 transition">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+        </div>
+        <div id="diffContent" class="px-6 py-4 overflow-y-auto flex-grow"></div>
+        <div class="px-6 py-3 border-t border-gray-100 flex justify-end">
+            <button onclick="closeModal('diffModal')" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition">关闭</button>
+        </div>
+    </div>
+</div>
+
+<div id="detailModal" class="fixed inset-0 bg-black/50 z-50 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[85vh] flex flex-col">
+        <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+            <h3 class="text-lg font-semibold text-gray-900">日志详情</h3>
+            <button onclick="closeModal('detailModal')" class="text-gray-400 hover:text-gray-600 transition">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+        </div>
+        <div id="detailContent" class="px-6 py-4 overflow-y-auto flex-grow"></div>
+        <div class="px-6 py-3 border-t border-gray-100 flex justify-end">
+            <button onclick="closeModal('detailModal')" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition">关闭</button>
+        </div>
+    </div>
+</div>
+
+<style>
+    .hidden { display: none !important; }
+    input[type="checkbox"].hidden:checked + span { font-weight: 600; }
+</style>
+
+<script>
+    function toggleChildren(logId) {
+        const row = document.querySelector(`[data-children-row="${logId}"]`);
+        const chevron = document.querySelector(`[data-chevron="${logId}"]`);
+        if (row) {
+            row.classList.toggle('hidden');
+            if (chevron) {
+                if (row.classList.contains('hidden')) {
+                    chevron.style.transform = 'rotate(0deg)';
+                } else {
+                    chevron.style.transform = 'rotate(90deg)';
+                }
+            }
+        }
+    }
+
+    function closeModal(id) {
+        const modal = document.getElementById(id);
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+        document.body.style.overflow = '';
+    }
+
+    function openModal(id) {
+        const modal = document.getElementById(id);
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        document.body.style.overflow = 'hidden';
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text == null ? '' : String(text);
+        return div.innerHTML;
+    }
+
+    async function showDiff(logId) {
+        const content = document.getElementById('diffContent');
+        content.innerHTML = '<div class="text-center py-8"><svg class="animate-spin h-8 w-8 text-primary mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></div>';
+        openModal('diffModal');
+        try {
+            const resp = await fetch(`/api/admin/logs/${logId}`);
+            const data = await resp.json();
+            if (data.success) {
+                const log = data.log;
+                let html = '';
+                if (log.diffs && log.diffs.length > 0) {
+                    html += '<div class="space-y-3">';
+                    for (const d of log.diffs) {
+                        html += `
+                        <div class="border border-gray-200 rounded-lg overflow-hidden">
+                            <div class="bg-gray-50 px-4 py-2 border-b border-gray-200">
+                                <span class="font-semibold text-gray-800 text-sm">${escapeHtml(d.field)}</span>
+                            </div>
+                            <div class="grid grid-cols-2 divide-x divide-gray-200">
+                                <div class="p-3 bg-red-50">
+                                    <div class="text-xs text-red-600 font-medium mb-1">变更前</div>
+                                    <div class="text-sm text-red-800 break-all font-mono">${escapeHtml(d.before) === '' ? '<span class="text-red-400 italic">(空)</span>' : escapeHtml(d.before)}</div>
+                                </div>
+                                <div class="p-3 bg-green-50">
+                                    <div class="text-xs text-green-600 font-medium mb-1">变更后</div>
+                                    <div class="text-sm text-green-800 break-all font-mono">${escapeHtml(d.after) === '' ? '<span class="text-green-400 italic">(空)</span>' : escapeHtml(d.after)}</div>
+                                </div>
+                            </div>
+                        </div>`;
+                    }
+                    html += '</div>';
+                } else {
+                    html = '<div class="text-center py-8 text-gray-500">暂无字段级变更对比</div>';
+                }
+                if (log.before_data || log.after_data) {
+                    html += '<div class="mt-6 pt-4 border-t border-gray-100">';
+                    if (log.before_data) {
+                        html += `<div class="mb-4"><div class="text-xs font-semibold text-gray-500 uppercase mb-2">完整 before 快照</div><pre class="bg-gray-50 p-3 rounded-lg text-xs overflow-x-auto text-gray-700">${escapeHtml(JSON.stringify(log.before_data, null, 2))}</pre></div>`;
+                    }
+                    if (log.after_data) {
+                        html += `<div><div class="text-xs font-semibold text-gray-500 uppercase mb-2">完整 after 快照</div><pre class="bg-gray-50 p-3 rounded-lg text-xs overflow-x-auto text-gray-700">${escapeHtml(JSON.stringify(log.after_data, null, 2))}</pre></div>`;
+                    }
+                    html += '</div>';
+                }
+                content.innerHTML = html;
+            }
+        } catch (e) {
+            content.innerHTML = '<div class="text-center py-8 text-red-500">加载失败</div>';
+        }
+    }
+
+    async function showDetail(logId) {
+        const content = document.getElementById('detailContent');
+        content.innerHTML = '<div class="text-center py-8"><svg class="animate-spin h-8 w-8 text-primary mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></div>';
+        openModal('detailModal');
+        try {
+            const resp = await fetch(`/api/admin/logs/${logId}`);
+            const data = await resp.json();
+            if (data.success) {
+                const log = data.log;
+                let html = `
+                <div class="space-y-4">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <div class="text-xs font-medium text-gray-500 mb-1">操作时间</div>
+                            <div class="text-sm text-gray-900">${escapeHtml(log.created_at)}</div>
+                        </div>
+                        <div>
+                            <div class="text-xs font-medium text-gray-500 mb-1">操作类型</div>
+                            <div class="text-sm text-gray-900">${escapeHtml(log.operation_type_label)}</div>
+                        </div>
+                        <div>
+                            <div class="text-xs font-medium text-gray-500 mb-1">来源 IP</div>
+                            <div class="text-sm font-mono text-gray-900">${escapeHtml(log.ip_address || '-')}</div>
+                        </div>
+                        <div>
+                            <div class="text-xs font-medium text-gray-500 mb-1">异常标记</div>
+                            <div class="text-sm">
+                                ${log.is_anomaly ? '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">是</span>' : '<span class="text-gray-600">否</span>'}
+                            </div>
+                        </div>
+                        <div class="col-span-2">
+                            <div class="text-xs font-medium text-gray-500 mb-1">摘要</div>
+                            <div class="text-sm text-gray-900">${escapeHtml(log.summary)}</div>
+                        </div>
+                        <div>
+                            <div class="text-xs font-medium text-gray-500 mb-1">资源类型</div>
+                            <div class="text-sm text-gray-900">${escapeHtml(log.resource_type || '-')}</div>
+                        </div>
+                        <div>
+                            <div class="text-xs font-medium text-gray-500 mb-1">资源 ID</div>
+                            <div class="text-sm font-mono text-gray-900">${escapeHtml(log.resource_id || '-')}</div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="text-xs font-medium text-gray-500 mb-1">变更快照</div>
+                        <div class="text-sm">
+                            ${log.has_snapshot ? '<button onclick="closeModal(\'detailModal\');showDiff(' + log.id + ')" class="text-primary hover:underline">查看字段对比</button>' : '<span class="text-gray-400">无</span>'}
+                        </div>
+                    </div>`;
+                if (log.has_children && log.children && log.children.length > 0) {
+                    html += `
+                    <div>
+                        <div class="text-xs font-medium text-gray-500 mb-2">子操作（共 ${log.children.length} 条）</div>
+                        <div class="border border-gray-200 rounded-lg overflow-hidden">
+                            <table class="w-full text-sm">
+                                <thead class="bg-gray-50">
+                                    <tr>
+                                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">时间</th>
+                                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">类型</th>
+                                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">摘要</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-100">`;
+                    for (const c of log.children) {
+                        html += `<tr>
+                            <td class="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">${escapeHtml(c.created_at)}</td>
+                            <td class="px-3 py-2 text-xs text-gray-700">${escapeHtml(c.operation_type_label)}</td>
+                            <td class="px-3 py-2 text-xs text-gray-800">${escapeHtml(c.summary)}</td>
+                        </tr>`;
+                    }
+                    html += `</tbody></table></div></div>`;
+                }
+                html += '</div>';
+                content.innerHTML = html;
+            }
+        } catch (e) {
+            content.innerHTML = '<div class="text-center py-8 text-red-500">加载失败</div>';
+        }
+    }
+
+    document.getElementById('diffModal').addEventListener('click', function(e) { if (e.target === this) closeModal('diffModal'); });
+    document.getElementById('detailModal').addEventListener('click', function(e) { if (e.target === this) closeModal('detailModal'); });
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            closeModal('diffModal');
+            closeModal('detailModal');
+        }
+    });
+
+    document.querySelectorAll('input[name="operation_type"]').forEach(function(cb) {
+        cb.addEventListener('change', function() {
+            const label = cb.closest('label');
+            if (cb.checked) {
+                label.classList.remove('bg-gray-100', 'text-gray-700', 'hover:bg-gray-200');
+                label.classList.add('bg-primary', 'text-white');
+            } else {
+                label.classList.add('bg-gray-100', 'text-gray-700', 'hover:bg-gray-200');
+                label.classList.remove('bg-primary', 'text-white');
+            }
+        });
+    });
+</script>
+{% endblock %}
