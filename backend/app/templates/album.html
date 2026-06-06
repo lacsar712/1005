@@ -31,57 +31,384 @@
 </div>
 
 {% if album.photos %}
-    <!-- Added ID for Viewer.js -->
-    <div id="gallery" class="columns-1 sm:columns-2 md:columns-3 lg:columns-4 gap-4 space-y-4">
+    <div id="gallery" class="space-y-6">
         {% for photo in album.photos %}
         {% set photo_tag_ids = photo.tags.all() | map(attribute='id') | list %}
-        <div class="break-inside-avoid relative group rounded-lg overflow-hidden shadow-sm hover:shadow-lg transition">
-            <!-- Image for Viewer.js (cursor-zoom-in) -->
-            <img src="{{ url_for('static', filename='uploads/' + photo.filename) }}" 
-                 alt="{{ photo.original_filename }}" 
-                 class="w-full h-auto object-cover rounded-lg cursor-zoom-in">
-            
-            {% if photo.tags.count() > 0 %}
-            <div class="absolute top-2 left-2 flex flex-wrap gap-1 max-w-[90%]">
-                {% for tag in photo.tags.all() %}
-                <a href="{{ url_for('view_tag', tag_id=tag.id) }}" class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-500/90 text-white backdrop-blur-sm hover:bg-blue-600 transition">
-                    {{ tag.name }}
-                </a>
-                {% endfor %}
-            </div>
-            {% endif %}
+        <div class="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100" data-photo-id="{{ photo.id }}">
+            <div class="relative group">
+                <img src="{{ url_for('static', filename='uploads/' + photo.filename) }}" 
+                     alt="{{ photo.original_filename }}" 
+                     class="w-full h-auto object-cover cursor-zoom-in">
+                
+                {% if photo.tags.count() > 0 %}
+                <div class="absolute top-2 left-2 flex flex-wrap gap-1 max-w-[90%]">
+                    {% for tag in photo.tags.all() %}
+                    <a href="{{ url_for('view_tag', tag_id=tag.id) }}" class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-500/90 text-white backdrop-blur-sm hover:bg-blue-600 transition">
+                        {{ tag.name }}
+                    </a>
+                    {% endfor %}
+                </div>
+                {% endif %}
 
-            <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-4 opacity-0 group-hover:opacity-100 transition duration-300 flex justify-between items-end pointer-events-none">
-                <span class="text-white text-xs truncate max-w-[50%]">{{ photo.original_filename }}</span>
-                <div class="flex items-center space-x-2 pointer-events-auto">
-                    {% if current_user.is_authenticated %}
-                        <button onclick="openTagModal({{ photo.id }}, [{% for tid in photo_tag_ids %}{{ tid }}{% if not loop.last %},{% endif %}{% endfor %}])" class="text-white/90 hover:text-white bg-white/10 hover:bg-white/20 backdrop-blur-sm p-1.5 rounded transition" title="打标签">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path></svg>
+                <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-4 opacity-0 group-hover:opacity-100 transition duration-300 flex justify-between items-end pointer-events-none">
+                    <span class="text-white text-xs truncate max-w-[50%]">{{ photo.original_filename }}</span>
+                    <div class="flex items-center space-x-2 pointer-events-auto">
+                        {% if current_user.is_authenticated %}
+                            <button onclick="openTagModal({{ photo.id }}, [{% for tid in photo_tag_ids %}{{ tid }}{% if not loop.last %},{% endif %}{% endfor %}])" class="text-white/90 hover:text-white bg-white/10 hover:bg-white/20 backdrop-blur-sm p-1.5 rounded transition" title="打标签">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path></svg>
+                            </button>
+                            <a href="javascript:void(0)" onclick="return confirmDelete('删除照片？', '这张照片将被永久删除且无法找回，其评论也将一并删除。', '{{ url_for('delete_photo', photo_id=photo.id) }}')" class="text-red-300 hover:text-red-100 bg-red-900/50 hover:bg-red-900/80 p-1.5 rounded transition">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                            </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="border-t border-gray-100">
+                <button class="comment-toggle w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition text-left" data-photo-id="{{ photo.id }}">
+                    <div class="flex items-center">
+                        <svg class="w-5 h-5 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
+                        <span class="text-sm font-medium text-gray-700">评论</span>
+                        <span class="comment-count ml-2 text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full" data-photo-id="{{ photo.id }}">0</span>
+                    </div>
+                    <svg class="comment-chevron w-4 h-4 text-gray-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" data-photo-id="{{ photo.id }}"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                </button>
+
+                <div class="comment-panel hidden border-t border-gray-100 px-4 py-4" data-photo-id="{{ photo.id }}">
+                    <form class="comment-form mb-4 space-y-3" data-photo-id="{{ photo.id }}">
+                        <div>
+                            <input type="text" name="nickname" placeholder="昵称（默认：匿名访客）" maxlength="50"
+                                class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition">
+                        </div>
+                        <div>
+                            <textarea name="content" placeholder="写下你的评论..." maxlength="500" rows="2" required
+                                class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition resize-none"></textarea>
+                        </div>
+                        <div class="flex justify-end">
+                            <button type="submit" class="comment-submit-btn bg-primary hover:bg-blue-600 text-white text-sm px-4 py-2 rounded-lg transition flex items-center">
+                                <span class="btn-text">发表评论</span>
+                                <svg class="btn-spin hidden animate-spin ml-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                            </button>
+                        </div>
+                    </form>
+
+                    <div class="comment-list space-y-3" data-photo-id="{{ photo.id }}">
+                        <div class="comment-empty text-center py-6 text-gray-400 text-sm">
+                            还没有评论，快来抢沙发吧～
+                        </div>
+                    </div>
+
+                    <div class="comment-load-more-wrap hidden mt-4 text-center">
+                        <button class="comment-load-more text-sm text-primary hover:text-blue-700 hover:underline transition" data-photo-id="{{ photo.id }}">
+                            加载更多
                         </button>
-                        <a href="javascript:void(0)" onclick="return confirmDelete('删除照片？', '这张照片将被永久删除且无法找回。', '{{ url_for('delete_photo', photo_id=photo.id) }}')" class="text-red-300 hover:text-red-100 bg-red-900/50 hover:bg-red-900/80 p-1.5 rounded transition">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                        </a>
-                    {% endif %}
+                    </div>
                 </div>
             </div>
         </div>
         {% endfor %}
     </div>
 
-    <!-- Viewer.js 脚本 (Unpkg) -->
+    <!-- Viewer.js 脚本 -->
     <script src="https://unpkg.com/viewerjs@1.11.6/dist/viewer.min.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             var gallery = document.getElementById('gallery');
             if (gallery && typeof Viewer !== 'undefined') {
-                new Viewer(gallery, {
-                    toolbar: true,
-                    navbar: true,
-                    title: false
+                var viewerImgs = gallery.querySelectorAll('img');
+                viewerImgs.forEach(function(img) {
+                    new Viewer(img, {
+                        toolbar: true,
+                        navbar: true,
+                        title: false
+                    });
                 });
             }
         });
     </script>
+
+    <!-- 评论系统脚本 -->
+    <script>
+        var IS_ADMIN = {% if current_user.is_authenticated %}true{% else %}false{% endif %};
+
+        function formatTime(timeStr) {
+            return timeStr;
+        }
+
+        function createCommentElement(comment) {
+            var div = document.createElement('div');
+            div.className = 'comment-item bg-gray-50 rounded-lg p-3 animate-fade-in';
+            div.setAttribute('data-comment-id', comment.id);
+
+            var deleteBtn = '';
+            if (IS_ADMIN) {
+                deleteBtn = `
+                    <button class="comment-delete text-gray-400 hover:text-red-500 transition ml-2" data-comment-id="${comment.id}" title="删除评论">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                    </button>
+                `;
+            }
+
+            div.innerHTML = `
+                <div class="flex items-start justify-between">
+                    <div class="flex items-center">
+                        <div class="w-7 h-7 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white text-xs font-bold">
+                            ${comment.nickname.charAt(0)}
+                        </div>
+                        <div class="ml-2">
+                            <div class="text-sm font-medium text-gray-800">${escapeHtml(comment.nickname)}</div>
+                            <div class="text-xs text-gray-400">${formatTime(comment.created_at)}</div>
+                        </div>
+                    </div>
+                    <div class="flex items-center">
+                        ${deleteBtn}
+                    </div>
+                </div>
+                <div class="mt-2 text-sm text-gray-700 whitespace-pre-wrap break-words">${escapeHtml(comment.content)}</div>
+            `;
+            return div;
+        }
+
+        function escapeHtml(text) {
+            var div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function showToast(message, type) {
+            const Toast = Swal.mixin({
+                toast: true,
+                position: 'top',
+                showConfirmButton: false,
+                timer: 3000,
+                timerProgressBar: true
+            });
+            Toast.fire({
+                icon: type || 'info',
+                title: message
+            });
+        }
+
+        async function loadComments(photoId, page) {
+            page = page || 1;
+            var commentList = document.querySelector(`.comment-list[data-photo-id="${photoId}"]`);
+            var loadMoreWrap = document.querySelector(`.comment-load-more-wrap[data-photo-id="${photoId}"]`);
+            var loadMoreBtn = document.querySelector(`.comment-load-more[data-photo-id="${photoId}"]`);
+            var countBadge = document.querySelector(`.comment-count[data-photo-id="${photoId}"]`);
+
+            if (page === 1) {
+                commentList.innerHTML = '<div class="text-center py-4"><svg class="animate-spin h-5 w-5 text-primary mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></div>';
+            }
+
+            try {
+                var resp = await fetch(`/api/photo/${photoId}/comments?page=${page}&per_page=5`);
+                var data = await resp.json();
+
+                if (data.success) {
+                    countBadge.textContent = data.total;
+
+                    if (page === 1) {
+                        commentList.innerHTML = '';
+                    }
+
+                    if (data.comments.length === 0 && page === 1) {
+                        commentList.innerHTML = '<div class="comment-empty text-center py-6 text-gray-400 text-sm">还没有评论，快来抢沙发吧～</div>';
+                    } else {
+                        var emptyEl = commentList.querySelector('.comment-empty');
+                        if (emptyEl) emptyEl.remove();
+
+                        data.comments.forEach(function(c) {
+                            commentList.appendChild(createCommentElement(c));
+                        });
+                    }
+
+                    if (data.has_more) {
+                        loadMoreWrap.classList.remove('hidden');
+                        loadMoreBtn.setAttribute('data-page', page + 1);
+                    } else {
+                        loadMoreWrap.classList.add('hidden');
+                    }
+
+                    bindDeleteButtons(photoId);
+                }
+            } catch (e) {
+                if (page === 1) {
+                    commentList.innerHTML = '<div class="text-center py-6 text-red-400 text-sm">加载评论失败</div>';
+                }
+            }
+        }
+
+        function bindDeleteButtons(photoId) {
+            if (!IS_ADMIN) return;
+
+            document.querySelectorAll(`.comment-delete[data-comment-id]`).forEach(function(btn) {
+                if (btn.getAttribute('data-bound')) return;
+                btn.setAttribute('data-bound', '1');
+                btn.addEventListener('click', async function() {
+                    var commentId = btn.getAttribute('data-comment-id');
+                    var result = await Swal.fire({
+                        title: '删除评论？',
+                        text: '该评论将被永久删除',
+                        icon: 'warning',
+                        showCancelButton: true,
+                        confirmButtonColor: '#ef4444',
+                        cancelButtonColor: '#6b7280',
+                        confirmButtonText: '确定删除',
+                        cancelButtonText: '取消',
+                        borderRadius: '1rem'
+                    });
+
+                    if (result.isConfirmed) {
+                        try {
+                            var resp = await fetch(`/api/comment/${commentId}`, { method: 'DELETE' });
+                            var data = await resp.json();
+                            if (data.success) {
+                                var item = document.querySelector(`.comment-item[data-comment-id="${commentId}"]`);
+                                if (item) {
+                                    item.style.opacity = '0';
+                                    item.style.transform = 'translateX(-20px)';
+                                    item.style.transition = 'all 0.3s';
+                                    setTimeout(function() {
+                                        item.remove();
+                                        var commentList = document.querySelector(`.comment-list[data-photo-id="${photoId}"]`);
+                                        var countBadge = document.querySelector(`.comment-count[data-photo-id="${photoId}"]`);
+                                        var currentCount = parseInt(countBadge.textContent) || 0;
+                                        countBadge.textContent = Math.max(0, currentCount - 1);
+                                        if (commentList.children.length === 0) {
+                                            commentList.innerHTML = '<div class="comment-empty text-center py-6 text-gray-400 text-sm">还没有评论，快来抢沙发吧～</div>';
+                                        }
+                                    }, 300);
+                                }
+                                showToast('评论已删除', 'success');
+                            }
+                        } catch (e) {
+                            showToast('删除失败', 'error');
+                        }
+                    }
+                });
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('.comment-toggle').forEach(function(toggle) {
+                toggle.addEventListener('click', function() {
+                    var photoId = toggle.getAttribute('data-photo-id');
+                    var panel = document.querySelector(`.comment-panel[data-photo-id="${photoId}"]`);
+                    var chevron = document.querySelector(`.comment-chevron[data-photo-id="${photoId}"]`);
+                    var isHidden = panel.classList.contains('hidden');
+
+                    if (isHidden) {
+                        panel.classList.remove('hidden');
+                        chevron.style.transform = 'rotate(180deg)';
+                        loadComments(photoId, 1);
+                    } else {
+                        panel.classList.add('hidden');
+                        chevron.style.transform = 'rotate(0deg)';
+                    }
+                });
+            });
+
+            document.querySelectorAll('.comment-form').forEach(function(form) {
+                form.addEventListener('submit', async function(e) {
+                    e.preventDefault();
+                    var photoId = form.getAttribute('data-photo-id');
+                    var nicknameInput = form.querySelector('input[name="nickname"]');
+                    var contentInput = form.querySelector('textarea[name="content"]');
+                    var submitBtn = form.querySelector('.comment-submit-btn');
+                    var btnText = submitBtn.querySelector('.btn-text');
+                    var btnSpin = submitBtn.querySelector('.btn-spin');
+
+                    var content = contentInput.value.trim();
+                    if (!content) {
+                        showToast('请输入评论内容', 'error');
+                        return;
+                    }
+
+                    submitBtn.disabled = true;
+                    btnText.textContent = '发送中...';
+                    btnSpin.classList.remove('hidden');
+
+                    try {
+                        var resp = await fetch(`/api/photo/${photoId}/comments`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                nickname: nicknameInput.value.trim(),
+                                content: content
+                            })
+                        });
+                        var data = await resp.json();
+
+                        if (data.success) {
+                            contentInput.value = '';
+                            nicknameInput.value = '';
+                            var panel = document.querySelector(`.comment-panel[data-photo-id="${photoId}"]`);
+                            var commentList = panel.querySelector('.comment-list');
+                            var countBadge = document.querySelector(`.comment-count[data-photo-id="${photoId}"]`);
+
+                            var emptyEl = commentList.querySelector('.comment-empty');
+                            if (emptyEl) emptyEl.remove();
+
+                            var newEl = createCommentElement(data.comment);
+                            newEl.style.animation = 'none';
+                            newEl.style.opacity = '0';
+                            newEl.style.transform = 'translateY(-10px)';
+                            commentList.insertBefore(newEl, commentList.firstChild);
+                            requestAnimationFrame(function() {
+                                newEl.style.transition = 'all 0.3s';
+                                newEl.style.opacity = '1';
+                                newEl.style.transform = 'translateY(0)';
+                            });
+
+                            var currentCount = parseInt(countBadge.textContent) || 0;
+                            countBadge.textContent = currentCount + 1;
+
+                            var allItems = commentList.querySelectorAll('.comment-item');
+                            if (allItems.length > 5) {
+                                var loadMoreWrap = document.querySelector(`.comment-load-more-wrap[data-photo-id="${photoId}"]`);
+                                loadMoreWrap.classList.remove('hidden');
+                                var loadMoreBtn = document.querySelector(`.comment-load-more[data-photo-id="${photoId}"]`);
+                                loadMoreBtn.setAttribute('data-page', '2');
+                            }
+
+                            bindDeleteButtons(photoId);
+                            showToast('评论发表成功', 'success');
+                        } else {
+                            showToast(data.message || '发表失败', 'error');
+                        }
+                    } catch (e) {
+                        showToast('网络错误，请重试', 'error');
+                    } finally {
+                        submitBtn.disabled = false;
+                        btnText.textContent = '发表评论';
+                        btnSpin.classList.add('hidden');
+                    }
+                });
+            });
+
+            document.querySelectorAll('.comment-load-more').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    var photoId = btn.getAttribute('data-photo-id');
+                    var page = parseInt(btn.getAttribute('data-page')) || 2;
+                    loadComments(photoId, page);
+                });
+            });
+        });
+    </script>
+
+    <style>
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+            animation: fadeIn 0.3s ease-out;
+        }
+    </style>
 
     <!-- 打标签弹窗 -->
     {% if current_user.is_authenticated and all_tags %}

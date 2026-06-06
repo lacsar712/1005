@@ -24,6 +24,15 @@ class Photo(db.Model):
     album_id = db.Column(db.Integer, db.ForeignKey('album.id'), nullable=False) # 所属相册 ID
     uploaded_at = db.Column(db.DateTime, default=datetime.utcnow) # 上传时间 (UTC)
     tags = db.relationship('Tag', secondary=photo_tags, backref=db.backref('photos', lazy='dynamic'), lazy='dynamic')
+    comments = db.relationship('Comment', backref='photo', lazy=True, cascade="all, delete-orphan")
+
+class Comment(db.Model):
+    """照片评论模型"""
+    id = db.Column(db.Integer, primary_key=True)
+    photo_id = db.Column(db.Integer, db.ForeignKey('photo.id', ondelete='CASCADE'), nullable=False)
+    nickname = db.Column(db.String(50), nullable=False, default='匿名访客')
+    content = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 class Tag(db.Model):
     """标签模型"""

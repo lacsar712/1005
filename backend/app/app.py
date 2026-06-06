@@ -1,9 +1,10 @@
 import os
 import uuid
-from flask import Flask, render_template, request, redirect, url_for, flash, abort, send_from_directory
+from datetime import datetime
+from flask import Flask, render_template, request, redirect, url_for, flash, abort, send_from_directory, jsonify
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.utils import secure_filename
-from .db import db, Album, Photo, Tag
+from .db import db, Album, Photo, Tag, Comment
 
 # 常量设置
 UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static/uploads')
@@ -30,6 +31,18 @@ def create_app():
     app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5MB 限制
 
     db.init_app(app)
+
+    from sqlalchemy import event
+    from sqlalchemy.engine import Engine
+
+    @event.listens_for(Engine, "connect")
+    def _set_sqlite_pragma(dbapi_connection, connection_record):
+        try:
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON;")
+            cursor.close()
+        except Exception:
+            pass
     
     login_manager = LoginManager()
     login_manager.login_view = 'login'
@@ -272,6 +285,75 @@ def create_app():
         db.session.commit()
         flash('标签已更新', 'success')
         return redirect(url_for('album_detail', album_id=photo.album_id))
+
+    # --- 评论 API 路由 ---
+
+    def comment_to_dict(comment):
+        return {
+            'id': comment.id,
+            'photo_id': comment.photo_id,
+            'nickname': comment.nickname,
+            'content': comment.content,
+            'created_at': comment.created_at.strftime('%Y-%m-%d %H:%M:%S')
+        }
+
+    @app.route('/api/photo/<int:photo_id>/comments', methods=['GET'])
+    def get_photo_comments(photo_id):
+        photo = Photo.query.get_or_404(photo_id)
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 5, type=int)
+        offset = (page - 1) * per_page
+
+        query = Comment.query.filter_by(photo_id=photo_id).order_by(Comment.created_at.desc())
+        total = query.count()
+        comments = query.offset(offset).limit(per_page).all()
+
+        return jsonify({
+            'success': True,
+            'comments': [comment_to_dict(c) for c in comments],
+            'total': total,
+            'page': page,
+            'per_page': per_page,
+            'has_more': (offset + len(comments)) < total
+        })
+
+    @app.route('/api/photo/<int:photo_id>/comments', methods=['POST'])
+    def add_photo_comment(photo_id):
+        photo = Photo.query.get_or_404(photo_id)
+        data = request.get_json() if request.is_json else request.form
+
+        nickname = (data.get('nickname') or '').strip() or '匿名访客'
+        content = (data.get('content') or '').strip()
+
+        if not content:
+            return jsonify({'success': False, 'message': '评论内容不能为空'}), 400
+
+        if len(content) > 500:
+            return jsonify({'success': False, 'message': '评论内容不能超过500字'}), 400
+
+        if len(nickname) > 50:
+            return jsonify({'success': False, 'message': '昵称不能超过50字'}), 400
+
+        new_comment = Comment(
+            photo_id=photo_id,
+            nickname=nickname,
+            content=content
+        )
+        db.session.add(new_comment)
+        db.session.commit()
+
+        return jsonify({
+            'success': True,
+            'comment': comment_to_dict(new_comment)
+        })
+
+    @app.route('/api/comment/<int:comment_id>', methods=['DELETE'])
+    @login_required
+    def delete_comment(comment_id):
+        comment = Comment.query.get_or_404(comment_id)
+        db.session.delete(comment)
+        db.session.commit()
+        return jsonify({'success': True, 'message': '评论已删除'})
 
     return app
 
