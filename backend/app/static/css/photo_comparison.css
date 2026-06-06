@@ -1,0 +1,46 @@
+.pc-photo-item.selected .pc-check-overlay { background: rgba(59, 130, 246, 0.25) !important; }
+.pc-photo-item.selected .pc-check-icon { background: #3b82f6 !important; border-color: #3b82f6 !important; opacity: 1 !important; }
+.pc-photo-item.selected .pc-check-icon svg { opacity: 1 !important; }
+
+.pc-canvas-wrap canvas {
+    image-rendering: auto;
+}
+
+.pc-viewer {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.pc-toolbar input[type="checkbox"] {
+    cursor: pointer;
+}
+
+.pc-mode-btn:disabled {
+    pointer-events: none;
+}
+
+.pc-exif-diff .grid > div {
+    word-break: break-word;
+}
+
+.pc-diff-layer canvas {
+    mix-blend-mode: normal;
+}
+
+.pc-before-after .pc-image {
+    -webkit-user-drag: none;
+    user-select: none;
+    pointer-events: none;
+}
+
+.pc-modal-overlay {
+    backdrop-filter: blur(4px);
+}
+
+.pc-badge {
+    animation: pc-pop 0.2s ease-out;
+}
+
+@keyframes pc-pop {
+    0% { transform: scale(0.5); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+}
