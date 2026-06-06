@@ -49,8 +49,87 @@ class Photo(db.Model):
     gps_latitude = db.Column(db.Float) # EXIF: GPS 纬度
     gps_longitude = db.Column(db.Float) # EXIF: GPS 经度
     image_format = db.Column(db.String(10)) # 图片格式 (jpg/png/gif/webp)
+    location_country = db.Column(db.String(100)) # 逆地理编码：国家
+    location_province = db.Column(db.String(100)) # 逆地理编码：省/直辖市
+    location_city = db.Column(db.String(100)) # 逆地理编码：城市
+    location_district = db.Column(db.String(100)) # 逆地理编码：区/县
+    location_address = db.Column(db.String(255)) # 逆地理编码：完整地址
+    location_manual = db.Column(db.Boolean, default=False) # 是否为人工手动设置
+    trip_id = db.Column(db.Integer, db.ForeignKey('trip.id', ondelete='SET NULL'), nullable=True)
     tags = db.relationship('Tag', secondary=photo_tags, backref=db.backref('photos', lazy='dynamic'), lazy='dynamic')
     comments = db.relationship('Comment', backref='photo', lazy=True, cascade="all, delete-orphan")
+
+    @property
+    def has_gps(self):
+        return self.gps_latitude is not None and self.gps_longitude is not None
+
+    @property
+    def has_location(self):
+        return (self.location_city is not None and self.location_city.strip()) or \
+               (self.location_address is not None and self.location_address.strip())
+
+    @property
+    def location_short(self):
+        parts = [p for p in [self.location_province, self.location_city, self.location_district] if p]
+        return ' '.join(parts) if parts else None
+
+    @property
+    def location_display(self):
+        if self.location_address:
+            return self.location_address
+        return self.location_short
+
+class Trip(db.Model):
+    """行程模型 - 将时空邻近的照片自动聚合为行程"""
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200)) # 行程名称
+    description = db.Column(db.Text) # 行程描述
+    start_time = db.Column(db.DateTime) # 起始时间
+    end_time = db.Column(db.DateTime) # 结束时间
+    start_latitude = db.Column(db.Float) # 起始点纬度
+    start_longitude = db.Column(db.Float) # 起始点经度
+    end_latitude = db.Column(db.Float) # 结束点纬度
+    end_longitude = db.Column(db.Float) # 结束点经度
+    location_summary = db.Column(db.String(255)) # 行程地点摘要
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    photos = db.relationship('Photo', backref='trip', lazy='dynamic',
+                             foreign_keys='Photo.trip_id')
+
+    @property
+    def photo_count(self):
+        return self.photos.count()
+
+    @property
+    def route_points(self):
+        """返回有序的坐标点列表用于绘制 polyline"""
+        result = []
+        for p in self.photos.order_by(db.func.coalesce(Photo.taken_at, Photo.uploaded_at).asc()).all():
+            if p.gps_latitude is not None and p.gps_longitude is not None:
+                result.append([p.gps_latitude, p.gps_longitude])
+        return result
+
+    @property
+    def time_span_str(self):
+        if not self.start_time or not self.end_time:
+            return ''
+        if self.start_time.date() == self.end_time.date():
+            return f"{self.start_time.strftime('%Y-%m-%d %H:%M')} ~ {self.end_time.strftime('%H:%M')}"
+        return f"{self.start_time.strftime('%Y-%m-%d %H:%M')} ~ {self.end_time.strftime('%Y-%m-%d %H:%M')}"
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name or ('行程 ' + str(self.id)),
+            'description': self.description,
+            'start_time': self.start_time.strftime('%Y-%m-%d %H:%M:%S') if self.start_time else None,
+            'end_time': self.end_time.strftime('%Y-%m-%d %H:%M:%S') if self.end_time else None,
+            'time_span': self.time_span_str,
+            'photo_count': self.photo_count,
+            'location_summary': self.location_summary,
+            'route_points': self.route_points,
+        }
+
 
 class Comment(db.Model):
     """照片评论模型"""
@@ -89,10 +168,11 @@ class OperationLog(db.Model):
         'photo_batch_delete': '批量删除照片',
         'photo_batch_rename': '批量重命名照片',
         'photo_batch_move': '批量移动照片',
+        'photo_tag_update': '更新照片标签',
+        'photo_location_update': '更新照片地点',
         'tag_create': '创建标签',
         'tag_rename': '重命名标签',
         'tag_delete': '删除标签',
-        'photo_tag_update': '更新照片标签',
         'comment_delete': '删除评论',
         'settings_update': '更新站点设置',
         'export_zip': 'ZIP导出',

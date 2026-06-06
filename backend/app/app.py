@@ -6,6 +6,7 @@ import uuid
 import json
 import zipfile
 import threading
+import time
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, redirect, url_for, flash, abort, send_from_directory, jsonify, make_response, send_file
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
@@ -13,7 +14,8 @@ from werkzeug.utils import secure_filename
 from sqlalchemy import or_, and_, func
 from PIL import Image
 from PIL.ExifTags import TAGS, GPSTAGS
-from .db import db, Album, Photo, Tag, Comment, SiteConfig, OperationLog, ExportJob, DownloadHistory, format_bytes_human
+import requests
+from .db import db, Album, Photo, Tag, Comment, SiteConfig, OperationLog, ExportJob, DownloadHistory, Trip, format_bytes_human
 
 # 常量设置
 UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static/uploads')
@@ -263,6 +265,206 @@ def get_image_format(filename):
             ext = 'jpg'
         return ext
     return None
+
+
+def reverse_geocode(latitude, longitude):
+    """
+    使用 Nominatim (OpenStreetMap) 进行逆地理编码
+    返回 {country, province, city, district, address}
+    失败或无结果返回 None
+    """
+    if latitude is None or longitude is None:
+        return None
+    try:
+        url = "https://nominatim.openstreetmap.org/reverse"
+        params = {
+            'lat': str(latitude),
+            'lon': str(longitude),
+            'format': 'json',
+            'zoom': 14,
+            'addressdetails': 1,
+            'accept-language': 'zh-CN'
+        }
+        headers = {
+            'User-Agent': 'PhotoAlbumApp/1.0 (local)'
+        }
+        resp = requests.get(url, params=params, headers=headers, timeout=10)
+        if resp.status_code != 200:
+            return None
+        data = resp.json()
+        if not data or 'address' not in data:
+            return None
+        addr = data['address']
+        result = {
+            'country': addr.get('country'),
+            'province': addr.get('state') or addr.get('province'),
+            'city': addr.get('city') or addr.get('town') or addr.get('county'),
+            'district': addr.get('suburb') or addr.get('district') or addr.get('township'),
+            'address': data.get('display_name')
+        }
+        for k, v in list(result.items()):
+            if isinstance(v, str):
+                result[k] = v.strip() or None
+        if not any(result.values()):
+            return None
+        return result
+    except Exception:
+        return None
+
+
+def haversine_distance(lat1, lon1, lat2, lon2):
+    """
+    计算两点间的 Haversine 距离（米）
+    """
+    if None in (lat1, lon1, lat2, lon2):
+        return float('inf')
+    import math
+    R = 6371000
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlmb = math.radians(lon2 - lon1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlmb / 2) ** 2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return R * c
+
+
+def infer_trips(photo_ids=None, min_photos=2, time_gap_hours=6, distance_gap_meters=5000):
+    """
+    基于时空邻近性推断行程
+    :param photo_ids: 限定只处理这些照片ID（None表示全部有GPS的照片）
+    :param min_photos: 形成行程最少照片数
+    :param time_gap_hours: 两张照片超过此时间差则断开
+    :param distance_gap_meters: 两张照片超过此距离则断开
+    """
+    query = Photo.query.filter(
+        Photo.gps_latitude.isnot(None),
+        Photo.gps_longitude.isnot(None)
+    )
+    if photo_ids:
+        query = query.filter(Photo.id.in_(photo_ids))
+    all_photos = query.order_by(func.coalesce(Photo.taken_at, Photo.uploaded_at).asc()).all()
+    if len(all_photos) < min_photos:
+        return
+
+    clusters = []
+    current_cluster = []
+    prev_photo = None
+
+    for photo in all_photos:
+        if prev_photo is None:
+            current_cluster = [photo]
+            prev_photo = photo
+            continue
+        prev_time = prev_photo.taken_at or prev_photo.uploaded_at
+        curr_time = photo.taken_at or photo.uploaded_at
+        time_diff = (curr_time - prev_time).total_seconds() / 3600.0 if prev_time and curr_time else float('inf')
+        dist = haversine_distance(
+            prev_photo.gps_latitude, prev_photo.gps_longitude,
+            photo.gps_latitude, photo.gps_longitude
+        )
+        if time_diff > time_gap_hours or dist > distance_gap_meters:
+            if len(current_cluster) >= min_photos:
+                clusters.append(current_cluster)
+            current_cluster = [photo]
+        else:
+            current_cluster.append(photo)
+        prev_photo = photo
+
+    if len(current_cluster) >= min_photos:
+        clusters.append(current_cluster)
+
+    for cluster in clusters:
+        sorted_photos = sorted(
+            cluster,
+            key=lambda p: (p.taken_at or p.uploaded_at or datetime.min)
+        )
+        first_p = sorted_photos[0]
+        last_p = sorted_photos[-1]
+        start_time = first_p.taken_at or first_p.uploaded_at
+        end_time = last_p.taken_at or last_p.uploaded_at
+
+        locations = set()
+        for p in sorted_photos:
+            loc = p.location_short
+            if loc:
+                locations.add(loc)
+        loc_summary = ' → '.join(list(locations)[:3]) if locations else None
+
+        same_trip_ids = set()
+        for p in sorted_photos:
+            if p.trip_id:
+                same_trip_ids.add(p.trip_id)
+
+        trip = None
+        if len(same_trip_ids) == 1:
+            trip = Trip.query.get(list(same_trip_ids)[0])
+
+        if trip is None:
+            trip = Trip()
+            db.session.add(trip)
+            db.session.flush()
+
+        trip.start_time = start_time
+        trip.end_time = end_time
+        trip.start_latitude = first_p.gps_latitude
+        trip.start_longitude = first_p.gps_longitude
+        trip.end_latitude = last_p.gps_latitude
+        trip.end_longitude = last_p.gps_longitude
+        trip.location_summary = loc_summary
+
+        date_str = start_time.strftime('%Y-%m-%d') if start_time else '未知日期'
+        city_str = ''
+        for p in sorted_photos:
+            if p.location_city:
+                city_str = p.location_city
+                break
+        if city_str:
+            trip.name = f"{city_str}之旅 · {date_str}"
+        else:
+            trip.name = f"行程 · {date_str}"
+
+        for p in sorted_photos:
+            p.trip_id = trip.id
+
+    db.session.commit()
+
+
+def process_photo_location(photo):
+    """
+    为照片处理逆地理编码（已有GPS且未手动设置地点时）
+    """
+    if photo.location_manual:
+        return
+    if photo.gps_latitude is None or photo.gps_longitude is None:
+        return
+    if photo.location_city or photo.location_address:
+        return
+    result = reverse_geocode(photo.gps_latitude, photo.gps_longitude)
+    if result:
+        photo.location_country = result.get('country')
+        photo.location_province = result.get('province')
+        photo.location_city = result.get('city')
+        photo.location_district = result.get('district')
+        photo.location_address = result.get('address')
+
+
+def process_uploaded_locations_async(app_instance, photo_ids):
+    """
+    后台线程：为刚上传的照片批量处理逆地理编码 + 行程推断
+    """
+    with app_instance.app_context():
+        try:
+            for pid in photo_ids:
+                photo = Photo.query.get(pid)
+                if not photo:
+                    continue
+                process_photo_location(photo)
+                time.sleep(1.0)
+            db.session.commit()
+            infer_trips(photo_ids=photo_ids)
+        except Exception:
+            pass
 
 
 DEFAULT_SITE_CONFIG = {
@@ -562,6 +764,15 @@ def create_app():
                                       after_data=model_snapshot(p),
                                       parent_id=parent_log.id, commit=False)
                 db.session.commit()
+
+                uploaded_ids = [p.id for p in uploaded_photos]
+                loc_thread = threading.Thread(
+                    target=process_uploaded_locations_async,
+                    args=(app, uploaded_ids),
+                    daemon=True
+                )
+                loc_thread.start()
+
                 flash(f'成功上传 {uploaded_count} 张图片', 'success')
                 return redirect(url_for('album_detail', album_id=album.id))
             else:
@@ -1665,6 +1876,157 @@ def create_app():
             download_name=download_name,
             mimetype='application/zip'
         )
+
+    # --- 地理位置相关路由 ---
+
+    @app.route('/map')
+    def map_view():
+        """地图浏览页面"""
+        return render_template('map.html')
+
+    @app.route('/api/map/photos')
+    def api_map_photos():
+        """获取所有有 GPS 的照片数据（地图渲染用）"""
+        photos = Photo.query.filter(
+            Photo.gps_latitude.isnot(None),
+            Photo.gps_longitude.isnot(None)
+        ).all()
+        result = []
+        for p in photos:
+            album = Album.query.get(p.album_id)
+            taken_at = p.taken_at or p.uploaded_at
+            result.append({
+                'id': p.id,
+                'latitude': p.gps_latitude,
+                'longitude': p.gps_longitude,
+                'original_filename': p.original_filename,
+                'thumbnail_url': url_for('static', filename='uploads/' + p.filename),
+                'address': p.location_display,
+                'city': p.location_city,
+                'district': p.location_district,
+                'album_id': p.album_id,
+                'album_title': album.title if album else '',
+                'album_url': url_for('album_detail', album_id=p.album_id),
+                'taken_at': taken_at.strftime('%Y-%m-%d %H:%M:%S') if taken_at else None,
+                'trip_id': p.trip_id,
+            })
+        return jsonify({'success': True, 'photos': result})
+
+    @app.route('/api/map/trips')
+    def api_map_trips():
+        """获取所有行程数据（地图侧栏展示用）"""
+        trips = Trip.query.order_by(Trip.start_time.desc().nullslast()).all()
+        result = [t.to_dict() for t in trips]
+        return jsonify({'success': True, 'trips': result})
+
+    @app.route('/photo/<int:photo_id>/location', methods=['POST'])
+    @login_required
+    def update_photo_location(photo_id):
+        """手动补充/修正照片地点"""
+        photo = Photo.query.get_or_404(photo_id)
+        data = request.get_json() if request.is_json else request.form
+
+        before = {
+            'location_country': photo.location_country,
+            'location_province': photo.location_province,
+            'location_city': photo.location_city,
+            'location_district': photo.location_district,
+            'location_address': photo.location_address,
+            'gps_latitude': photo.gps_latitude,
+            'gps_longitude': photo.gps_longitude,
+        }
+
+        country = (data.get('country') or '').strip() or None
+        province = (data.get('province') or '').strip() or None
+        city = (data.get('city') or '').strip()
+        district = (data.get('district') or '').strip() or None
+        address = (data.get('address') or '').strip() or None
+        latitude = data.get('latitude')
+        longitude = data.get('longitude')
+
+        if not city and not address:
+            return jsonify({'success': False, 'message': '至少需要填写城市或完整地址'}), 400
+
+        photo.location_country = country
+        photo.location_province = province
+        photo.location_city = city or None
+        photo.location_district = district
+        photo.location_address = address
+        photo.location_manual = True
+
+        try:
+            if latitude is not None and longitude is not None:
+                photo.gps_latitude = float(latitude)
+                photo.gps_longitude = float(longitude)
+        except (ValueError, TypeError):
+            pass
+
+        after = {
+            'location_country': photo.location_country,
+            'location_province': photo.location_province,
+            'location_city': photo.location_city,
+            'location_district': photo.location_district,
+            'location_address': photo.location_address,
+            'gps_latitude': photo.gps_latitude,
+            'gps_longitude': photo.gps_longitude,
+        }
+
+        log_operation('photo_location_update',
+                      f'更新照片「{photo.original_filename}」地点信息',
+                      resource_type='photo', resource_id=photo.id,
+                      before_data=before, after_data=after)
+        db.session.commit()
+
+        t = threading.Thread(target=lambda: (
+            None,
+            None,
+            infer_trips(photo_ids=[photo.id])
+        ), daemon=True)
+        t.start()
+
+        return jsonify({
+            'success': True,
+            'location': {
+                'country': photo.location_country,
+                'province': photo.location_province,
+                'city': photo.location_city,
+                'district': photo.location_district,
+                'address': photo.location_address,
+                'latitude': photo.gps_latitude,
+                'longitude': photo.gps_longitude,
+                'display': photo.location_display,
+            }
+        })
+
+    @app.route('/photo/<int:photo_id>/location', methods=['GET'])
+    def get_photo_location(photo_id):
+        """获取单张照片的地点信息"""
+        photo = Photo.query.get_or_404(photo_id)
+        return jsonify({
+            'success': True,
+            'location': {
+                'country': photo.location_country,
+                'province': photo.location_province,
+                'city': photo.location_city,
+                'district': photo.location_district,
+                'address': photo.location_address,
+                'latitude': photo.gps_latitude,
+                'longitude': photo.gps_longitude,
+                'display': photo.location_display,
+                'manual': photo.location_manual,
+                'has_gps': photo.has_gps,
+            }
+        })
+
+    @app.route('/api/admin/infer-trips', methods=['POST'])
+    @login_required
+    def api_infer_trips():
+        """手动触发全局行程推断"""
+        try:
+            infer_trips()
+            return jsonify({'success': True, 'message': '行程推断完成'})
+        except Exception as e:
+            return jsonify({'success': False, 'message': str(e)}), 500
 
     return app
 

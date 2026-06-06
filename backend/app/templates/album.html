@@ -59,7 +59,15 @@
                 <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-4 opacity-0 group-hover:opacity-100 transition duration-300 flex justify-between items-end pointer-events-none">
                     <span class="text-white text-xs truncate max-w-[50%]">{{ photo.original_filename }}</span>
                     <div class="flex items-center space-x-2 pointer-events-auto">
+                        {% if photo.has_gps %}
+                            <a href="javascript:void(0)" onclick="viewOnMap({{ photo.gps_latitude }}, {{ photo.gps_longitude }})" class="text-white/90 hover:text-white bg-white/10 hover:bg-white/20 backdrop-blur-sm p-1.5 rounded transition" title="在地图中查看">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                            </a>
+                        {% endif %}
                         {% if current_user.is_authenticated %}
+                            <button onclick="openLocationModal({{ photo.id }})" class="text-white/90 hover:text-white bg-white/10 hover:bg-white/20 backdrop-blur-sm p-1.5 rounded transition" title="编辑地点">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                            </button>
                             <button onclick="openTagModal({{ photo.id }}, [{% for tid in photo_tag_ids %}{{ tid }}{% if not loop.last %},{% endif %}{% endfor %}])" class="text-white/90 hover:text-white bg-white/10 hover:bg-white/20 backdrop-blur-sm p-1.5 rounded transition" title="打标签">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path></svg>
                             </button>
@@ -72,6 +80,34 @@
             </div>
 
             <div class="border-t border-gray-100">
+                {% if photo.has_location or photo.has_gps %}
+                <div class="px-4 py-2 bg-gray-50 border-b border-gray-100 flex items-center justify-between text-xs">
+                    <div class="flex items-center flex-1 min-w-0">
+                        <svg class="w-3.5 h-3.5 mr-1.5 text-primary flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                        <span class="text-gray-600 truncate">
+                            {% if photo.location_display %}
+                                {{ photo.location_display }}
+                            {% elif photo.has_gps %}
+                                <span class="text-gray-400">坐标：{{ "%.4f"|format(photo.gps_latitude) }}, {{ "%.4f"|format(photo.gps_longitude) }}（地址解析中…）</span>
+                            {% endif %}
+                        </span>
+                        {% if photo.location_manual %}
+                            <span class="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-amber-50 text-amber-700 border border-amber-200">手动</span>
+                        {% endif %}
+                    </div>
+                    {% if photo.has_gps %}
+                        <a href="javascript:void(0)" onclick="viewOnMap({{ photo.gps_latitude }}, {{ photo.gps_longitude }})" class="ml-2 text-primary hover:text-blue-700 flex-shrink-0 flex items-center">
+                            <span>在地图中查看</span>
+                            <svg class="w-3 h-3 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                        </a>
+                    {% elif current_user.is_authenticated %}
+                        <button onclick="openLocationModal({{ photo.id }})" class="ml-2 text-primary hover:text-blue-700 flex-shrink-0 flex items-center text-xs">
+                            <span>补充地点</span>
+                            <svg class="w-3 h-3 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                        </button>
+                    {% endif %}
+                </div>
+                {% endif %}
                 <button class="comment-toggle w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition text-left" data-photo-id="{{ photo.id }}">
                     <div class="flex items-center">
                         <svg class="w-5 h-5 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
@@ -483,6 +519,197 @@
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape') {
                 closeTagModal();
+            }
+        });
+    </script>
+    {% endif %}
+
+    {% if current_user.is_authenticated %}
+    <!-- 地点编辑弹窗 -->
+    <div id="locationModal" class="fixed inset-0 bg-black/50 z-50 hidden items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[85vh] flex flex-col">
+            <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                <h3 class="text-lg font-semibold text-gray-900 flex items-center">
+                    <svg class="w-5 h-5 mr-2 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                    编辑拍摄地点
+                </h3>
+                <button onclick="closeLocationModal()" class="text-gray-400 hover:text-gray-600 transition">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <form id="locationForm" onsubmit="return saveLocation(event)" class="flex flex-col overflow-hidden">
+                <div class="px-6 py-4 overflow-y-auto flex-grow space-y-4">
+                    <div class="text-xs text-gray-500 bg-blue-50 border border-blue-100 rounded-lg p-3">
+                        💡 手动填写地点信息后，将覆盖自动解析的结果。至少需要填写「城市」或「完整地址」。
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">国家</label>
+                            <input type="text" name="country" id="locCountry" placeholder="中国"
+                                class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">省 / 直辖市</label>
+                            <input type="text" name="province" id="locProvince" placeholder="上海市"
+                                class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">城市 <span class="text-red-500">*</span></label>
+                            <input type="text" name="city" id="locCity" placeholder="上海"
+                                class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">区 / 县</label>
+                            <input type="text" name="district" id="locDistrict" placeholder="浦东新区"
+                                class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">完整地址</label>
+                        <input type="text" name="address" id="locAddress" placeholder="上海市浦东新区世纪大道100号"
+                            class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition">
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">纬度 (Latitude)</label>
+                            <input type="number" step="any" name="latitude" id="locLat" placeholder="31.2304"
+                                class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">经度 (Longitude)</label>
+                            <input type="number" step="any" name="longitude" id="locLon" placeholder="121.4737"
+                                class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition">
+                        </div>
+                    </div>
+                    <div id="locGpsHint" class="text-xs text-gray-400 pt-1">
+                        <span class="inline-flex items-center">
+                            <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            经纬度可选，填写后可在地图中定位
+                        </span>
+                    </div>
+                </div>
+                <div class="px-6 py-4 border-t border-gray-100 flex justify-end space-x-3">
+                    <button type="button" onclick="closeLocationModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">取消</button>
+                    <button type="submit" id="locSubmitBtn" class="px-4 py-2 bg-primary hover:bg-blue-600 text-white rounded-lg shadow-sm transition flex items-center">
+                        <span id="locSubmitText">保存</span>
+                        <svg id="locSubmitSpin" class="hidden animate-spin ml-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        var currentLocationPhotoId = null;
+
+        function openLocationModal(photoId) {
+            currentLocationPhotoId = photoId;
+            const modal = document.getElementById('locationModal');
+
+            document.getElementById('locCountry').value = '';
+            document.getElementById('locProvince').value = '';
+            document.getElementById('locCity').value = '';
+            document.getElementById('locDistrict').value = '';
+            document.getElementById('locAddress').value = '';
+            document.getElementById('locLat').value = '';
+            document.getElementById('locLon').value = '';
+
+            fetch(`/photo/${photoId}/location`)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success && data.location) {
+                        const l = data.location;
+                        document.getElementById('locCountry').value = l.country || '';
+                        document.getElementById('locProvince').value = l.province || '';
+                        document.getElementById('locCity').value = l.city || '';
+                        document.getElementById('locDistrict').value = l.district || '';
+                        document.getElementById('locAddress').value = l.address || '';
+                        if (l.latitude !== null && l.latitude !== undefined) document.getElementById('locLat').value = l.latitude;
+                        if (l.longitude !== null && l.longitude !== undefined) document.getElementById('locLon').value = l.longitude;
+                    }
+                })
+                .catch(() => {});
+
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeLocationModal() {
+            const modal = document.getElementById('locationModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            document.body.style.overflow = '';
+            currentLocationPhotoId = null;
+        }
+
+        async function saveLocation(e) {
+            e.preventDefault();
+            if (!currentLocationPhotoId) return false;
+
+            const city = document.getElementById('locCity').value.trim();
+            const address = document.getElementById('locAddress').value.trim();
+            if (!city && !address) {
+                Swal.fire({ icon: 'warning', title: '请至少填写城市或完整地址', toast: true, position: 'top', timer: 3000 });
+                return false;
+            }
+
+            const btn = document.getElementById('locSubmitBtn');
+            const btnText = document.getElementById('locSubmitText');
+            const btnSpin = document.getElementById('locSubmitSpin');
+            btn.disabled = true;
+            btnText.textContent = '保存中...';
+            btnSpin.classList.remove('hidden');
+
+            try {
+                const resp = await fetch(`/photo/${currentLocationPhotoId}/location`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        country: document.getElementById('locCountry').value,
+                        province: document.getElementById('locProvince').value,
+                        city: city,
+                        district: document.getElementById('locDistrict').value,
+                        address: address,
+                        latitude: document.getElementById('locLat').value || null,
+                        longitude: document.getElementById('locLon').value || null,
+                    })
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    Swal.fire({ icon: 'success', title: '地点已保存', toast: true, position: 'top', timer: 2500 });
+                    closeLocationModal();
+                    setTimeout(() => window.location.reload(), 500);
+                } else {
+                    Swal.fire({ icon: 'error', title: data.message || '保存失败', toast: true, position: 'top', timer: 3000 });
+                }
+            } catch (err) {
+                Swal.fire({ icon: 'error', title: '网络错误，请重试', toast: true, position: 'top', timer: 3000 });
+            } finally {
+                btn.disabled = false;
+                btnText.textContent = '保存';
+                btnSpin.classList.add('hidden');
+            }
+            return false;
+        }
+
+        function viewOnMap(lat, lon) {
+            const url = `/map?lat=${lat}&lon=${lon}&zoom=14`;
+            window.open(url, '_blank');
+        }
+
+        document.getElementById('locationModal').addEventListener('click', function(e) {
+            if (e.target === this) closeLocationModal();
+        });
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                if (!document.getElementById('locationModal').classList.contains('hidden')) closeLocationModal();
             }
         });
     </script>

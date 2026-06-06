@@ -1,0 +1,493 @@
+{% extends 'base.html' %}
+
+{% block content %}
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+
+<style>
+    #mapContainer {
+        position: relative;
+        width: 100%;
+        height: calc(100vh - 180px);
+        min-height: 500px;
+        border-radius: 1rem;
+        overflow: hidden;
+        border: 1px solid #e5e7eb;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    #map {
+        width: 100%;
+        height: 100%;
+    }
+    .sidebar-panel {
+        max-height: calc(100vh - 180px);
+        min-height: 500px;
+        overflow-y: auto;
+    }
+    .trip-item {
+        transition: all 0.2s;
+    }
+    .trip-item:hover {
+        background-color: #f3f4f6;
+    }
+    .trip-item.active {
+        background-color: #eff6ff;
+        border-left: 3px solid #3b82f6;
+    }
+    .trip-route-line {
+        stroke: #3b82f6;
+        stroke-width: 3;
+        stroke-opacity: 0.8;
+        fill: none;
+    }
+    .custom-popup {
+        min-width: 220px;
+    }
+    .custom-popup img {
+        border-radius: 0.5rem;
+        max-height: 160px;
+        object-fit: cover;
+        width: 100%;
+    }
+    .layer-switcher {
+        background: white;
+        padding: 0.25rem;
+        border-radius: 0.5rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        z-index: 1000;
+    }
+    .layer-btn {
+        padding: 0.4rem 0.75rem;
+        font-size: 0.8rem;
+        border-radius: 0.375rem;
+        border: none;
+        background: transparent;
+        cursor: pointer;
+        transition: all 0.15s;
+        color: #4b5563;
+    }
+    .layer-btn:hover {
+        background: #f3f4f6;
+    }
+    .layer-btn.active {
+        background: #3b82f6;
+        color: white;
+    }
+    .cluster-popup-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 4px;
+        max-width: 300px;
+    }
+    .cluster-popup-grid img {
+        width: 100%;
+        height: 80px;
+        object-fit: cover;
+        border-radius: 4px;
+    }
+</style>
+
+<div class="mb-6">
+    <div class="flex items-center text-sm text-gray-500 mb-4">
+        <a href="{{ url_for('index') }}" class="hover:text-primary transition flex items-center">
+            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+            返回首页
+        </a>
+        <span class="mx-2">/</span>
+        <span class="text-gray-800 font-medium">地图浏览</span>
+    </div>
+    <h1 class="text-3xl font-bold text-gray-900 mb-2">🗺️ 地图浏览</h1>
+    <p class="text-gray-600">浏览所有带位置信息的照片，查看拍摄地点与行程</p>
+</div>
+
+<div class="flex flex-col lg:flex-row gap-6">
+
+    <div class="lg:w-72 flex-shrink-0">
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 sidebar-panel">
+            <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                <h2 class="font-semibold text-gray-800 flex items-center">
+                    <svg class="w-5 h-5 mr-2 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"></path></svg>
+                    行程
+                </h2>
+                <span id="tripCount" class="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">0</span>
+            </div>
+            <div id="tripList" class="divide-y divide-gray-50">
+                <div class="px-4 py-8 text-center text-sm text-gray-400">
+                    <svg class="w-10 h-10 mx-auto mb-2 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                    暂无行程数据
+                </div>
+            </div>
+            {% if current_user.is_authenticated %}
+            <div class="px-4 py-3 border-t border-gray-100">
+                <button onclick="rebuildTrips()" class="w-full text-sm text-primary hover:bg-blue-50 px-3 py-2 rounded-lg transition flex items-center justify-center">
+                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                    重新推断行程
+                </button>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="flex-1 relative">
+        <div id="mapContainer">
+            <div id="map"></div>
+            <div class="layer-switcher absolute top-4 right-4 flex gap-1">
+                <button class="layer-btn active" data-layer="markers" onclick="switchLayer('markers')">📍 点位</button>
+                <button class="layer-btn" data-layer="cluster" onclick="switchLayer('cluster')">🔢 聚合簇</button>
+                <button class="layer-btn" data-layer="heatmap" onclick="switchLayer('heatmap')">🔥 热力图</button>
+            </div>
+            <div id="mapLoading" class="absolute inset-0 bg-white/80 flex items-center justify-center z-50">
+                <div class="text-center">
+                    <svg class="animate-spin h-8 w-8 text-primary mx-auto mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <p class="text-sm text-gray-500">加载地图数据...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+var map, markersLayer, clusterLayer, heatmapLayer, tripPolylines = {};
+var allPhotos = [], allTrips = [];
+var currentLayer = 'markers';
+var activeTripId = null;
+
+var blueIcon = L.divIcon({
+    className: 'custom-marker',
+    html: '<div style="background:#3b82f6;width:24px;height:24px;border-radius:50%;border:3px solid white;box-shadow:0 2px 5px rgba(0,0,0,0.3);"></div>',
+    iconSize: [24, 24],
+    iconAnchor: [12, 12]
+});
+
+function buildPopupHtml(photo) {
+    return `
+        <div class="custom-popup">
+            <img src="${photo.thumbnail_url}" alt="">
+            <div class="mt-2 text-sm font-medium text-gray-800">${escapeHtml(photo.original_filename)}</div>
+            ${photo.address ? `<div class="text-xs text-gray-500 mt-1">📍 ${escapeHtml(photo.address)}</div>` : ''}
+            ${photo.taken_at ? `<div class="text-xs text-gray-400 mt-0.5">🕐 ${photo.taken_at}</div>` : ''}
+            <a href="${photo.album_url}" class="mt-2 inline-flex items-center text-xs text-primary hover:underline">
+                <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                ${escapeHtml(photo.album_title)}
+            </a>
+        </div>
+    `;
+}
+
+function buildClusterPopupHtml(photos) {
+    const previews = photos.slice(0, 9);
+    let grid = previews.map(p => `<img src="${p.thumbnail_url}" onclick="focusPhoto(${p.id})" style="cursor:pointer">`).join('');
+    return `
+        <div>
+            <div class="text-sm font-medium text-gray-800 mb-2">共 ${photos.length} 张照片</div>
+            <div class="cluster-popup-grid">${grid}</div>
+        </div>
+    `;
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    var div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function initMap() {
+    map = L.map('map').setView([35.8617, 104.1954], 4);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
+        maxZoom: 19
+    }).addTo(map);
+
+    markersLayer = L.layerGroup().addTo(map);
+    clusterLayer = L.markerClusterGroup({
+        maxClusterRadius: 60,
+        iconCreateFunction: function(cluster) {
+            var count = cluster.getChildCount();
+            var size = count < 10 ? 'small' : count < 50 ? 'medium' : 'large';
+            return L.divIcon({
+                html: `<div style="background:#3b82f6;color:white;border-radius:50%;width:${count < 10 ? 36 : count < 50 ? 44 : 52}px;height:${count < 10 ? 36 : count < 50 ? 44 : 52}px;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:${count < 10 ? 13 : count < 50 ? 15 : 17}px;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3);">${count}</div>`,
+                className: 'custom-cluster',
+                iconSize: [count < 10 ? 36 : count < 50 ? 44 : 52, count < 10 ? 36 : count < 50 ? 44 : 52]
+            });
+        }
+    });
+
+    Promise.all([loadPhotos(), loadTrips()]).then(() => {
+        renderCurrentLayer();
+        renderTrips();
+        document.getElementById('mapLoading').classList.add('hidden');
+
+        var params = new URLSearchParams(window.location.search);
+        var lat = params.get('lat');
+        var lon = params.get('lon');
+        var zoom = params.get('zoom');
+
+        if (lat && lon) {
+            var z = parseInt(zoom) || 14;
+            map.setView([parseFloat(lat), parseFloat(lon)], z);
+            var nearPhoto = allPhotos.find(p =>
+                Math.abs(p.latitude - parseFloat(lat)) < 0.001 &&
+                Math.abs(p.longitude - parseFloat(lon)) < 0.001
+            );
+            if (nearPhoto) {
+                setTimeout(() => focusPhoto(nearPhoto.id), 500);
+            }
+        } else if (allPhotos.length > 0) {
+            var bounds = L.latLngBounds(allPhotos.map(p => [p.latitude, p.longitude]));
+            map.fitBounds(bounds, { padding: [50, 50] });
+        }
+    });
+}
+
+async function loadPhotos() {
+    try {
+        const resp = await fetch('/api/map/photos');
+        const data = await resp.json();
+        if (data.success) {
+            allPhotos = data.photos;
+        }
+    } catch (e) { console.error(e); }
+}
+
+async function loadTrips() {
+    try {
+        const resp = await fetch('/api/map/trips');
+        const data = await resp.json();
+        if (data.success) {
+            allTrips = data.trips;
+        }
+    } catch (e) { console.error(e); }
+}
+
+function renderMarkers() {
+    markersLayer.clearLayers();
+    allPhotos.forEach(p => {
+        var marker = L.marker([p.latitude, p.longitude], { icon: blueIcon })
+            .bindPopup(buildPopupHtml(p), { maxWidth: 280 });
+        marker.photoId = p.id;
+        markersLayer.addLayer(marker);
+    });
+}
+
+function renderCluster() {
+    clusterLayer.clearLayers();
+    allPhotos.forEach(p => {
+        var marker = L.marker([p.latitude, p.longitude], { icon: blueIcon })
+            .bindPopup(buildPopupHtml(p), { maxWidth: 280 });
+        marker.photoId = p.id;
+        clusterLayer.addLayer(marker);
+    });
+    clusterLayer.on('clusterclick', function(a) {
+        var cluster = a.layer;
+        var childMarkers = cluster.getAllChildMarkers();
+        var childPhotos = childMarkers.map(m => allPhotos.find(p => p.id === m.photoId)).filter(Boolean);
+        if (childPhotos.length > 0) {
+            var popup = L.popup()
+                .setLatLng(a.latlng)
+                .setContent(buildClusterPopupHtml(childPhotos))
+                .openOn(map);
+        }
+    });
+}
+
+function renderHeatmap() {
+    if (!heatmapLayer) {
+        var heatPoints = allPhotos.map(p => [p.latitude, p.longitude, 0.5]);
+        heatmapLayer = L.heatLayer(heatPoints, {
+            radius: 30,
+            blur: 25,
+            maxZoom: 12,
+            gradient: {
+                0.2: '#3b82f6',
+                0.4: '#10b981',
+                0.6: '#f59e0b',
+                0.8: '#ef4444',
+                1.0: '#7c3aed'
+            }
+        });
+    }
+}
+
+function renderCurrentLayer() {
+    Object.values(tripPolylines).forEach(pl => map.removeLayer(pl));
+    tripPolylines = {};
+
+    if (map.hasLayer(clusterLayer)) map.removeLayer(clusterLayer);
+    if (map.hasLayer(heatmapLayer)) map.removeLayer(heatmapLayer);
+
+    if (currentLayer === 'markers') {
+        renderMarkers();
+    } else if (currentLayer === 'cluster') {
+        renderCluster();
+        map.addLayer(clusterLayer);
+    } else if (currentLayer === 'heatmap') {
+        renderHeatmap();
+        map.addLayer(heatmapLayer);
+    }
+
+    if (activeTripId !== null) {
+        highlightTrip(activeTripId, false);
+    }
+}
+
+function switchLayer(layer) {
+    currentLayer = layer;
+    document.querySelectorAll('.layer-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.layer === layer);
+    });
+    renderCurrentLayer();
+}
+
+function renderTrips() {
+    var list = document.getElementById('tripList');
+    document.getElementById('tripCount').textContent = allTrips.length;
+
+    if (allTrips.length === 0) {
+        list.innerHTML = `
+            <div class="px-4 py-8 text-center text-sm text-gray-400">
+                <svg class="w-10 h-10 mx-auto mb-2 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                暂无行程数据
+            </div>
+        `;
+        return;
+    }
+
+    list.innerHTML = allTrips.map(trip => `
+        <div class="trip-item px-4 py-3 cursor-pointer" data-trip-id="${trip.id}" onclick="toggleTrip(${trip.id})">
+            <div class="flex items-center justify-between">
+                <div class="font-medium text-sm text-gray-800 truncate flex-1">
+                    ${escapeHtml(trip.name)}
+                </div>
+                <svg class="trip-chevron w-4 h-4 text-gray-400 transition-transform ml-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+            </div>
+            <div class="mt-1 text-xs text-gray-500">
+                <span class="inline-flex items-center">
+                    <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                    ${trip.photo_count} 张
+                </span>
+            </div>
+            ${trip.time_span ? `<div class="mt-0.5 text-xs text-gray-400">🕐 ${escapeHtml(trip.time_span)}</div>` : ''}
+            ${trip.location_summary ? `<div class="mt-0.5 text-xs text-gray-400">📍 ${escapeHtml(trip.location_summary)}</div>` : ''}
+            <div class="trip-details hidden mt-3 pt-3 border-t border-gray-100 space-y-2">
+                <div class="text-xs text-gray-500">
+                    <span class="font-medium">起止：</span>
+                    ${trip.start_time || '-'} ~ ${trip.end_time || '-'}
+                </div>
+                <button onclick="event.stopPropagation(); focusTrip(${trip.id})" class="w-full text-xs text-primary hover:bg-blue-50 px-3 py-1.5 rounded transition flex items-center justify-center">
+                    <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                    在地图上查看路线
+                </button>
+            </div>
+        </div>
+    `).join('');
+}
+
+function toggleTrip(tripId) {
+    var item = document.querySelector(`.trip-item[data-trip-id="${tripId}"]`);
+    if (!item) return;
+    var details = item.querySelector('.trip-details');
+    var chevron = item.querySelector('.trip-chevron');
+    var isOpen = !details.classList.contains('hidden');
+
+    document.querySelectorAll('.trip-details').forEach(d => d.classList.add('hidden'));
+    document.querySelectorAll('.trip-chevron').forEach(c => c.style.transform = 'rotate(0deg)');
+    document.querySelectorAll('.trip-item').forEach(i => i.classList.remove('active'));
+
+    if (!isOpen) {
+        details.classList.remove('hidden');
+        chevron.style.transform = 'rotate(180deg)';
+        item.classList.add('active');
+        activeTripId = tripId;
+        highlightTrip(tripId, true);
+    } else {
+        activeTripId = null;
+        Object.values(tripPolylines).forEach(pl => map.removeLayer(pl));
+        tripPolylines = {};
+    }
+}
+
+function highlightTrip(tripId, zoom) {
+    var trip = allTrips.find(t => t.id === tripId);
+    if (!trip || !trip.route_points || trip.route_points.length < 2) return;
+
+    Object.values(tripPolylines).forEach(pl => map.removeLayer(pl));
+    tripPolylines = {};
+
+    var polyline = L.polyline(trip.route_points, {
+        color: '#3b82f6',
+        weight: 4,
+        opacity: 0.8,
+        dashArray: '6, 8'
+    }).addTo(map);
+
+    trip.route_points.forEach((pt, idx) => {
+        var isStart = idx === 0;
+        var isEnd = idx === trip.route_points.length - 1;
+        if (isStart || isEnd) {
+            var icon = L.divIcon({
+                className: '',
+                html: `<div style="background:${isStart ? '#10b981' : '#ef4444'};color:white;width:28px;height:28px;border-radius:50%;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;">${isStart ? '起' : '终'}</div>`,
+                iconSize: [28, 28],
+                iconAnchor: [14, 14]
+            });
+            L.marker(pt, { icon: icon }).addTo(map);
+        }
+    });
+
+    tripPolylines[tripId] = polyline;
+
+    if (zoom) {
+        var bounds = L.latLngBounds(trip.route_points);
+        map.fitBounds(bounds, { padding: [80, 80] });
+    }
+}
+
+function focusTrip(tripId) {
+    highlightTrip(tripId, true);
+}
+
+function focusPhoto(photoId) {
+    var photo = allPhotos.find(p => p.id === photoId);
+    if (!photo) return;
+    map.setView([photo.latitude, photo.longitude], 15);
+    switchLayer('markers');
+    setTimeout(() => {
+        markersLayer.eachLayer(layer => {
+            if (layer.photoId === photoId) {
+                layer.openPopup();
+            }
+        });
+    }, 300);
+}
+
+async function rebuildTrips() {
+    if (!confirm('确定要重新推断所有行程吗？')) return;
+    try {
+        const resp = await fetch('/api/admin/infer-trips', { method: 'POST' });
+        const data = await resp.json();
+        if (data.success) {
+            Swal.fire({ icon: 'success', title: '行程推断完成', toast: true, position: 'top', timer: 3000 });
+            await loadTrips();
+            renderTrips();
+        } else {
+            Swal.fire({ icon: 'error', title: data.message || '推断失败', toast: true, position: 'top', timer: 3000 });
+        }
+    } catch (e) {
+        Swal.fire({ icon: 'error', title: '网络错误', toast: true, position: 'top', timer: 3000 });
+    }
+}
+
+document.addEventListener('DOMContentLoaded', initMap);
+</script>
+
+{% endblock %}
