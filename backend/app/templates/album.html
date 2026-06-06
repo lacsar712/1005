@@ -1,0 +1,78 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<!-- Viewer.js CSS (BootCDN for China speed) -->
+<link href="https://cdn.bootcdn.net/ajax/libs/viewerjs/1.11.6/viewer.min.css" rel="stylesheet">
+
+<div class="mb-8">
+    <div class="flex items-center text-sm text-gray-500 mb-4">
+        <a href="{{ url_for('index') }}" class="hover:text-primary transition flex items-center">
+            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+            返回首页
+        </a>
+        <span class="mx-2">/</span>
+        <span class="text-gray-800 font-medium">{{ album.title }}</span>
+    </div>
+
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+            <h1 class="text-3xl font-bold text-gray-900 mb-2">{{ album.title }}</h1>
+            <p class="text-gray-600">{{ album.description or '暂无描述' }}</p>
+        </div>
+        {% if current_user.is_authenticated %}
+        <div class="flex-shrink-0">
+            <a href="{{ url_for('upload_photo', album_id=album.id) }}" class="bg-primary hover:bg-blue-600 text-white px-5 py-2.5 rounded-lg shadow transition flex items-center justify-center">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                上传照片
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% if album.photos %}
+    <!-- Added ID for Viewer.js -->
+    <div id="gallery" class="columns-1 sm:columns-2 md:columns-3 lg:columns-4 gap-4 space-y-4">
+        {% for photo in album.photos %}
+        <div class="break-inside-avoid relative group rounded-lg overflow-hidden shadow-sm hover:shadow-lg transition">
+            <!-- Image for Viewer.js (cursor-zoom-in) -->
+            <img src="{{ url_for('static', filename='uploads/' + photo.filename) }}" 
+                 alt="{{ photo.original_filename }}" 
+                 class="w-full h-auto object-cover rounded-lg cursor-zoom-in">
+            
+            <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-4 opacity-0 group-hover:opacity-100 transition duration-300 flex justify-between items-end pointer-events-none">
+                <span class="text-white text-xs truncate max-w-[70%]">{{ photo.original_filename }}</span>
+                {% if current_user.is_authenticated %}
+                    <a href="javascript:void(0)" onclick="return confirmDelete('删除照片？', '这张照片将被永久删除且无法找回。', '{{ url_for('delete_photo', photo_id=photo.id) }}')" class="pointer-events-auto text-red-300 hover:text-red-100 bg-red-900/50 hover:bg-red-900/80 p-1.5 rounded transition">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                    </a>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Viewer.js 脚本 (Unpkg) -->
+    <script src="https://unpkg.com/viewerjs@1.11.6/dist/viewer.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            var gallery = document.getElementById('gallery');
+            if (gallery && typeof Viewer !== 'undefined') {
+                // 初始化灯箱画廊
+                new Viewer(gallery, {
+                    toolbar: true,
+                    navbar: true,
+                    title: false
+                });
+            }
+        });
+    </script>
+{% else %}
+    <div class="text-center py-20 bg-gray-50 rounded-xl border border-dashed border-gray-300">
+        <p class="text-gray-500">这个相册还没有照片</p>
+        {% if current_user.is_authenticated %}
+            <a href="{{ url_for('upload_photo', album_id=album.id) }}" class="text-primary hover:underline mt-2 inline-block">上传第一张</a>
+        {% endif %}
+    </div>
+{% endif %}
+{% endblock %}

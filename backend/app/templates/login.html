@@ -1,0 +1,61 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="flex items-center justify-center min-h-[70vh] bg-gradient-to-br from-blue-50 to-indigo-50 rounded-3xl p-4">
+    <div class="w-full max-w-md bg-white rounded-xl shadow-md p-8 border border-gray-100">
+        <h2 class="text-2xl font-bold text-center text-gray-900 mb-8">管理员登录</h2>
+        <form method="POST" onsubmit="return handleFormSubmit(this)">
+            <div class="mb-5">
+                <label for="username" class="block text-sm font-medium text-gray-700 mb-1">用户名</label>
+                <input type="text" name="username" id="username" required 
+                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition">
+            </div>
+            <div class="mb-8">
+                <label for="password" class="block text-sm font-medium text-gray-700 mb-1">密码</label>
+                <input type="password" name="password" id="password" required 
+                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition">
+            </div>
+            <button type="submit" class="w-full bg-primary hover:bg-blue-600 text-white font-medium py-2.5 rounded-lg transition duration-200 shadow-sm">
+                立即登录
+            </button>
+        </form>
+
+        <!-- Test Credentials -->
+        <div class="mt-6 pt-6 border-t border-gray-100/80 text-center">
+            <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">测试账号</h3>
+            <div class="flex flex-col items-center space-y-3">
+                <div class="inline-flex items-center space-x-4 bg-gray-50 px-4 py-2 rounded-lg border border-gray-200">
+                    <div class="text-sm">
+                        <span class="text-gray-500 mr-1">账号:</span>
+                        <code class="text-primary font-mono font-bold">admin</code>
+                    </div>
+                    <div class="w-px h-4 bg-gray-300"></div>
+                    <div class="text-sm">
+                        <span class="text-gray-500 mr-1">密码:</span>
+                        <code class="text-primary font-mono font-bold">123456</code>
+                    </div>
+                </div>
+                <button type="button" onclick="fillCredentials()" class="text-xs text-primary hover:text-blue-700 hover:underline flex items-center transition">
+                    <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                    一键填入表单
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function fillCredentials() {
+        document.getElementById('username').value = 'admin';
+        document.getElementById('password').value = '123456';
+        // Optional: Highlight the fields briefly to show effect
+        const inputs = [document.getElementById('username'), document.getElementById('password')];
+        inputs.forEach(input => {
+            input.classList.add('bg-blue-50', 'border-primary');
+            setTimeout(() => {
+                input.classList.remove('bg-blue-50', 'border-primary');
+            }, 500);
+        });
+    }
+</script>
+{% endblock %}

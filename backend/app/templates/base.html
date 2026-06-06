@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>在线相册系统</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        // Tailwind 配置
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3b82f6',
+                        secondary: '#64748b',
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-50 min-h-screen text-gray-800 flex flex-col">
+
+    <!-- 导航栏 -->
+    <nav class="bg-white shadow-sm sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex">
+                    <a href="{{ url_for('index') }}" class="flex-shrink-0 flex items-center text-xl font-bold text-gray-800 hover:text-primary transition">
+                        📸 在线相册
+                    </a>
+                </div>
+                <div class="flex items-center space-x-4">
+                    {% if current_user.is_authenticated %}
+                        <a href="{{ url_for('create_album') }}" class="text-sm text-gray-600 hover:text-primary">新建相册</a>
+                        <span class="text-gray-300">|</span>
+                        <a href="{{ url_for('logout') }}" class="text-sm font-medium text-red-500 hover:text-red-700">退出管理</a>
+                    {% else %}
+                        <a href="{{ url_for('login') }}" class="text-sm font-medium text-gray-500 hover:text-primary">管理员登录</a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- SweetAlert2 Toast 消息提示 -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    const Toast = Swal.mixin({
+                        toast: true,
+                        position: 'top',
+                        showConfirmButton: false,
+                        timer: 5000,
+                        timerProgressBar: true,
+                        didOpen: (toast) => {
+                            toast.addEventListener('mouseenter', Swal.stopTimer)
+                            toast.addEventListener('mouseleave', Swal.resumeTimer)
+                        }
+                    });
+
+                    {% for category, message in messages %}
+                        Toast.fire({
+                            icon: '{{ "success" if category == "success" else "error" if category == "error" else "info" }}',
+                            title: '{{ message }}'
+                        });
+                    {% endfor %}
+                });
+            </script>
+        {% endif %}
+    {% endwith %}
+
+    <!-- 主体内容 -->
+    <main class="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- 页脚 -->
+    <footer class="bg-white border-t border-gray-100 py-6 mt-auto">
+        <div class="max-w-7xl mx-auto px-4 text-center text-sm text-gray-400">
+            &copy; 2026 在线相册系统. 保留所有权利。
+        </div>
+    </footer>
+
+    <!-- SweetAlert2 (Modern Popups) -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script>
+        function confirmDelete(title, text, url) {
+            Swal.fire({
+                title: title,
+                text: text,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#ef4444',
+                cancelButtonColor: '#6b7280',
+                confirmButtonText: '确定删除',
+                cancelButtonText: '取消',
+                background: '#ffffff',
+                borderRadius: '1rem'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    window.location.href = url;
+                }
+            });
+            return false;
+        }
+
+        // 全局表单提交防护（防抖与禁用）
+        function handleFormSubmit(form) {
+            const submitBtn = form.querySelector('button[type="submit"]');
+            if (submitBtn) {
+                // 立即禁用按钮防止二次点击
+                submitBtn.disabled = true;
+                // 添加视觉反馈
+                const originalText = submitBtn.innerHTML;
+                submitBtn.innerHTML = `
+                    <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    正在处理...
+                `;
+                submitBtn.classList.add('opacity-75', 'cursor-not-allowed');
+            }
+            return true;
+        }
+    </script>
+</body>
+</html>

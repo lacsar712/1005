@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  web:
+    build: 
+      context: ./backend
+    container_name: web-1005
+    ports:
+      - "31005:8000"
+      - "41005:8000"
+    deploy:
+      resources:
+        limits:
+          memory: 1.5GB
+    volumes:
+      - ./backend/app:/app/app
+      - ./data:/app/data
+      - ./uploads:/app/app/static/uploads
+    environment:
+      - FLASK_APP=app.app
+      - FLASK_RUN_HOST=0.0.0.0
+      - FLASK_RUN_PORT=80
+      - FLASK_DEBUG=1
+      - SECRET_KEY=dev-secret-key-1005
+    restart: always
