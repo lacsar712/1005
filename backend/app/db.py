@@ -441,3 +441,28 @@ def format_bytes_human(num_bytes):
         return f"{num_bytes / (1024 * 1024):.1f} MB"
     else:
         return f"{num_bytes / (1024 * 1024 * 1024):.2f} GB"
+
+
+def migrate_schema():
+    """SQLite 轻量迁移：为已有表补全模型中新增的列（create_all 不会 ALTER 已有表）"""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(db.engine)
+    for table_name, table in db.metadata.tables.items():
+        if not inspector.has_table(table_name):
+            continue
+        existing = {col['name'] for col in inspector.get_columns(table_name)}
+        for column in table.columns:
+            if column.name in existing:
+                continue
+            col_type = column.type.compile(dialect=db.engine.dialect)
+            stmt = f'ALTER TABLE {table_name} ADD COLUMN {column.name} {col_type}'
+            if column.default is not None and column.default.arg is not None:
+                default_val = column.default.arg
+                if isinstance(default_val, bool):
+                    default_val = 1 if default_val else 0
+                elif isinstance(default_val, str):
+                    default_val = f"'{default_val}'"
+                stmt += f' DEFAULT {default_val}'
+            db.session.execute(text(stmt))
+    db.session.commit()

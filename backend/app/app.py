@@ -15,7 +15,7 @@ from sqlalchemy import or_, and_, func
 from PIL import Image
 from PIL.ExifTags import TAGS, GPSTAGS
 import requests
-from .db import db, Album, Photo, Tag, Comment, SiteConfig, OperationLog, ExportJob, DownloadHistory, Trip, format_bytes_human, Notification, WebhookConfig
+from .db import db, Album, Photo, Tag, Comment, SiteConfig, OperationLog, ExportJob, DownloadHistory, Trip, format_bytes_human, Notification, WebhookConfig, migrate_schema
 from .services import NotificationService, AggregationService, WebhookService, CleanupService
 
 
@@ -567,6 +567,7 @@ def create_app():
 
     with app.app_context():
         db.create_all()
+        migrate_schema()
         # 初始化默认站点配置
         init_default_config()
         # 动态设置上传大小限制
