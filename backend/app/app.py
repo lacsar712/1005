@@ -4,7 +4,7 @@ from datetime import datetime
 from flask import Flask, render_template, request, redirect, url_for, flash, abort, send_from_directory, jsonify
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.utils import secure_filename
-from .db import db, Album, Photo, Tag, Comment
+from .db import db, Album, Photo, Tag, Comment, SiteConfig
 
 # 常量设置
 UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static/uploads')
@@ -21,6 +21,49 @@ class User(UserMixin):
 def allowed_file(filename):
     """验证文件后缀名"""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+DEFAULT_SITE_CONFIG = {
+    'site_name': '在线相册',
+    'welcome_message': '欢迎来到在线相册系统',
+    'copyright_text': '© 2026 在线相册系统. 保留所有权利。',
+    'contact_email': 'admin@example.com',
+    'max_upload_size_mb': '5',
+    'album_sort_by': 'created_at',
+    'show_site_stats': 'true'
+}
+
+def get_site_config():
+    """获取所有站点配置，返回字典"""
+    configs = SiteConfig.query.all()
+    result = dict(DEFAULT_SITE_CONFIG)
+    for cfg in configs:
+        result[cfg.config_key] = cfg.config_value
+    return result
+
+def get_config_value(key):
+    """获取单个配置值"""
+    cfg = SiteConfig.query.filter_by(config_key=key).first()
+    if cfg:
+        return cfg.config_value
+    return DEFAULT_SITE_CONFIG.get(key, '')
+
+def set_config_value(key, value):
+    """设置单个配置值"""
+    cfg = SiteConfig.query.filter_by(config_key=key).first()
+    if cfg:
+        cfg.config_value = str(value)
+    else:
+        cfg = SiteConfig(config_key=key, config_value=str(value))
+        db.session.add(cfg)
+    db.session.commit()
+
+def init_default_config():
+    """初始化默认站点配置"""
+    for key, value in DEFAULT_SITE_CONFIG.items():
+        if not SiteConfig.query.filter_by(config_key=key).first():
+            cfg = SiteConfig(config_key=key, config_value=value)
+            db.session.add(cfg)
+    db.session.commit()
 
 def create_app():
     app = Flask(__name__)
@@ -59,20 +102,60 @@ def create_app():
 
     with app.app_context():
         db.create_all()
+        # 初始化默认站点配置
+        init_default_config()
+        # 动态设置上传大小限制
+        max_size_mb = int(get_config_value('max_upload_size_mb'))
+        app.config['MAX_CONTENT_LENGTH'] = max_size_mb * 1024 * 1024
         # 如果没有任何相册，创建一个默认相册
         if Album.query.count() == 0:
             default_album = Album(title="我的首个相册", description="欢迎使用在线相册系统")
             db.session.add(default_album)
             db.session.commit()
 
+    # 上下文处理器：注入站点配置到所有模板
+    @app.context_processor
+    def inject_site_config():
+        config = get_site_config()
+        config['max_upload_size_mb_int'] = int(config.get('max_upload_size_mb', 5))
+        config['show_site_stats_bool'] = config.get('show_site_stats', 'true') == 'true'
+        return {'site_config': config}
+
+    # 413 请求过大错误处理
+    @app.errorhandler(413)
+    def request_entity_too_large(error):
+        max_size = get_config_value('max_upload_size_mb')
+        flash(f'上传文件过大，单文件最大允许 {max_size} MB', 'error')
+        return redirect(request.referrer or url_for('index'))
+
     # --- 路由 ---
 
     @app.route('/')
     def index():
         """相册列表页"""
-        albums = Album.query.order_by(Album.created_at.desc()).all()
+        sort_by = get_config_value('album_sort_by')
+        query = Album.query
+        if sort_by == 'photo_count':
+            from sqlalchemy import func
+            albums = query.outerjoin(Photo).group_by(Album.id).order_by(func.count(Photo.id).desc()).all()
+        elif sort_by == 'name':
+            albums = query.order_by(Album.title.asc()).all()
+        else:
+            albums = query.order_by(Album.created_at.desc()).all()
         tags = Tag.query.order_by(Tag.name).all()
-        return render_template('index.html', albums=albums, tags=tags)
+
+        total_albums = Album.query.count()
+        total_photos = Photo.query.count()
+        total_tags = Tag.query.count()
+        total_comments = Comment.query.count()
+        site_stats = {
+            'total_albums': total_albums,
+            'total_photos': total_photos,
+            'total_tags': total_tags,
+            'total_comments': total_comments
+        }
+
+        return render_template('index.html', albums=albums, tags=tags, site_stats=site_stats)
 
     @app.route('/album/<int:album_id>')
     def album_detail(album_id):
@@ -150,22 +233,28 @@ def create_app():
             files = request.files.getlist('photo')
             uploaded_count = 0
 
+            max_size_bytes = int(get_config_value('max_upload_size_mb')) * 1024 * 1024
+
             for file in files:
                 if file.filename == '':
                     continue
 
                 if file and allowed_file(file.filename):
+                    file.seek(0, os.SEEK_END)
+                    file_size = file.tell()
+                    file.seek(0)
+                    if file_size > max_size_bytes:
+                        continue
+
                     original_filename = secure_filename(file.filename)
                     if not original_filename:
                         original_filename = "未命名图片"
                     
-                    # 获取原始后缀名
                     try:
                         extension = file.filename.rsplit('.', 1)[1].lower()
                     except IndexError:
-                        continue # 跳过无效文件
+                        continue
 
-                    # 使用 UUID 重命名
                     unique_filename = f"{uuid.uuid4().hex}.{extension}"
                     
                     file.save(os.path.join(app.config['UPLOAD_FOLDER'], unique_filename))
@@ -181,7 +270,8 @@ def create_app():
             else:
                 flash('未选择有效文件或格式不支持', 'error')
 
-        return render_template('upload.html', album=album)
+        max_size_mb = int(get_config_value('max_upload_size_mb'))
+        return render_template('upload.html', album=album, max_upload_size_mb=max_size_mb)
 
     @app.route('/photo/delete/<int:photo_id>')
     @login_required
@@ -354,6 +444,53 @@ def create_app():
         db.session.delete(comment)
         db.session.commit()
         return jsonify({'success': True, 'message': '评论已删除'})
+
+    # --- 站点设置路由 ---
+
+    @app.route('/admin/settings', methods=['GET'])
+    @login_required
+    def site_settings():
+        """站点设置页面"""
+        config = get_site_config()
+        return render_template('settings.html', config=config)
+
+    @app.route('/admin/settings', methods=['POST'])
+    @login_required
+    def save_site_settings():
+        """保存站点设置"""
+        site_name = request.form.get('site_name', '').strip()
+        welcome_message = request.form.get('welcome_message', '').strip()
+        copyright_text = request.form.get('copyright_text', '').strip()
+        contact_email = request.form.get('contact_email', '').strip()
+        max_upload_size_mb = request.form.get('max_upload_size_mb', '5')
+        album_sort_by = request.form.get('album_sort_by', 'created_at')
+        show_site_stats = request.form.get('show_site_stats', 'false')
+
+        if not site_name:
+            flash('站点名称不能为空', 'error')
+            return redirect(url_for('site_settings'))
+
+        try:
+            size_mb = int(max_upload_size_mb)
+            if size_mb < 1 or size_mb > 10:
+                flash('上传大小限制必须在 1-10 MB 之间', 'error')
+                return redirect(url_for('site_settings'))
+        except (ValueError, TypeError):
+            flash('上传大小限制格式无效', 'error')
+            return redirect(url_for('site_settings'))
+
+        set_config_value('site_name', site_name)
+        set_config_value('welcome_message', welcome_message)
+        set_config_value('copyright_text', copyright_text)
+        set_config_value('contact_email', contact_email)
+        set_config_value('max_upload_size_mb', str(size_mb))
+        set_config_value('album_sort_by', album_sort_by)
+        set_config_value('show_site_stats', show_site_stats)
+
+        app.config['MAX_CONTENT_LENGTH'] = size_mb * 1024 * 1024
+
+        flash('站点设置已保存', 'success')
+        return redirect(url_for('site_settings'))
 
     return app
 

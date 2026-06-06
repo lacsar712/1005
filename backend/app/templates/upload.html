@@ -30,7 +30,7 @@
                             <p class="pl-1">或拖拽文件到这里</p>
                         </div>
                         <p class="text-xs text-gray-500">
-                            支持多图上传 (支持 PNG, JPG, GIF，单张不超过 5MB)
+                            支持多图上传 (支持 PNG, JPG, GIF，单张不超过 {{ max_upload_size_mb }}MB)
                         </p>
                         <div id="file-list" class="mt-4 text-sm text-gray-600 space-y-1 text-left max-h-64 overflow-y-auto custom-scrollbar"></div>
                     </div>
@@ -42,6 +42,13 @@
                     <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
                     开始上传
                 </button>
+            </div>
+
+            <div class="pt-4 border-t border-gray-100 mt-4">
+                <p class="text-xs text-gray-400 flex items-center">
+                    <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    当前单文件上传限制: <span class="font-semibold text-gray-600 ml-1">{{ max_upload_size_mb }} MB</span>
+                </p>
             </div>
         </form>
     </div>
@@ -67,6 +74,14 @@
 <script>
     const dropZone = document.querySelector('.border-dashed');
     const fileInput = document.getElementById('photo');
+    const MAX_SIZE_MB = {{ max_upload_size_mb }};
+    const MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024;
+
+    function formatSize(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+    }
 
     // 处理拖拽视觉效果
     ['dragenter', 'dragover'].forEach(eventName => {
@@ -94,21 +109,70 @@
     function updateFileList(input) {
         const fileList = document.getElementById('file-list');
         fileList.innerHTML = '';
-        
-        if (input.files && input.files.length > 0) {
-            const count = input.files.length;
-            const title = document.createElement('p');
-            title.className = 'font-bold text-green-600 mb-2 sticky top-0 bg-white py-1';
-            title.textContent = `已确认选择 ${count} 个文件:`;
-            fileList.appendChild(title);
+        let oversizedFiles = [];
+        let validFiles = [];
 
+        if (input.files && input.files.length > 0) {
             Array.from(input.files).forEach(file => {
-                const p = document.createElement('div');
-                p.className = 'flex items-center text-xs text-gray-500 py-0.5';
-                p.innerHTML = `<svg class="w-3 h-3 mr-2 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg><span class="truncate">${file.name}</span>`;
-                fileList.appendChild(p);
+                if (file.size > MAX_SIZE_BYTES) {
+                    oversizedFiles.push(file);
+                } else {
+                    validFiles.push(file);
+                }
             });
+
+            const count = validFiles.length;
+            if (count > 0) {
+                const title = document.createElement('p');
+                title.className = 'font-bold text-green-600 mb-2 sticky top-0 bg-white py-1';
+                title.textContent = `已确认选择 ${count} 个有效文件:`;
+                fileList.appendChild(title);
+
+                validFiles.forEach(file => {
+                    const p = document.createElement('div');
+                    p.className = 'flex items-center justify-between text-xs text-gray-500 py-0.5';
+                    p.innerHTML = `<div class="flex items-center flex-1 min-w-0"><svg class="w-3 h-3 mr-2 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg><span class="truncate">${file.name}</span></div><span class="text-gray-400 ml-2 shrink-0">${formatSize(file.size)}</span>`;
+                    fileList.appendChild(p);
+                });
+            }
+
+            if (oversizedFiles.length > 0) {
+                const warnTitle = document.createElement('p');
+                warnTitle.className = 'font-bold text-red-500 mb-2 mt-3 bg-white py-1';
+                warnTitle.textContent = `以下 ${oversizedFiles.length} 个文件超过 ${MAX_SIZE_MB}MB 限制，将被忽略:`;
+                fileList.appendChild(warnTitle);
+
+                oversizedFiles.forEach(file => {
+                    const p = document.createElement('div');
+                    p.className = 'flex items-center justify-between text-xs text-red-500 py-0.5';
+                    p.innerHTML = `<div class="flex items-center flex-1 min-w-0"><svg class="w-3 h-3 mr-2 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg><span class="truncate">${file.name}</span></div><span class="ml-2 shrink-0">${formatSize(file.size)}</span>`;
+                    fileList.appendChild(p);
+                });
+            }
         }
     }
+
+    // 表单提交前校验
+    const uploadForm = document.querySelector('form');
+    uploadForm.addEventListener('submit', function(e) {
+        const files = fileInput.files;
+        if (!files || files.length === 0) {
+            e.preventDefault();
+            Swal.fire({ icon: 'warning', title: '请选择文件', text: '请至少选择一张图片上传', confirmButtonColor: '#3b82f6' });
+            return;
+        }
+        let hasValid = false;
+        for (let i = 0; i < files.length; i++) {
+            if (files[i].size <= MAX_SIZE_BYTES) {
+                hasValid = true;
+                break;
+            }
+        }
+        if (!hasValid) {
+            e.preventDefault();
+            Swal.fire({ icon: 'error', title: '文件过大', text: `所有选中文件均超过 ${MAX_SIZE_MB}MB 限制`, confirmButtonColor: '#3b82f6' });
+            return;
+        }
+    });
 </script>
 {% endblock %}

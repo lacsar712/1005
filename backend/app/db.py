@@ -39,3 +39,10 @@ class Tag(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(50), nullable=False, unique=True) # 标签名称 (唯一)
     created_at = db.Column(db.DateTime, default=datetime.utcnow) # 创建时间 (UTC)
+
+class SiteConfig(db.Model):
+    """站点配置模型"""
+    id = db.Column(db.Integer, primary_key=True)
+    config_key = db.Column(db.String(100), nullable=False, unique=True)
+    config_value = db.Column(db.Text, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
