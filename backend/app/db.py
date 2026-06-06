@@ -136,3 +136,102 @@ class OperationLog(db.Model):
         if include_children:
             data['children'] = [c.to_dict(include_children=False) for c in self.children.all()]
         return data
+
+
+class ExportJob(db.Model):
+    """导出任务模型"""
+
+    STATUS_PENDING = 'pending'
+    STATUS_PROCESSING = 'processing'
+    STATUS_COMPLETED = 'completed'
+    STATUS_FAILED = 'failed'
+
+    id = db.Column(db.Integer, primary_key=True)
+    album_id = db.Column(db.Integer, db.ForeignKey('album.id'), nullable=False, index=True)
+    status = db.Column(db.String(20), nullable=False, default=STATUS_PENDING, index=True)
+    progress = db.Column(db.Integer, nullable=False, default=0)
+    total_photos = db.Column(db.Integer, nullable=False, default=0)
+    processed_photos = db.Column(db.Integer, nullable=False, default=0)
+    options = db.Column(JSONType)
+    zip_filename = db.Column(db.String(200))
+    file_size = db.Column(db.Integer, default=0)
+    error_message = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    completed_at = db.Column(db.DateTime)
+    expires_at = db.Column(db.DateTime)
+
+    album = db.relationship('Album', backref=db.backref('export_jobs', lazy='dynamic'))
+
+    @property
+    def is_ready(self):
+        return self.status == self.STATUS_COMPLETED and self.zip_filename is not None
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'album_id': self.album_id,
+            'status': self.status,
+            'progress': self.progress,
+            'total_photos': self.total_photos,
+            'processed_photos': self.processed_photos,
+            'options': self.options or {},
+            'zip_filename': self.zip_filename,
+            'file_size': self.file_size,
+            'error_message': self.error_message,
+            'created_at': self.created_at.strftime('%Y-%m-%d %H:%M:%S') if self.created_at else None,
+            'completed_at': self.completed_at.strftime('%Y-%m-%d %H:%M:%S') if self.completed_at else None,
+            'is_ready': self.is_ready,
+        }
+
+
+class DownloadHistory(db.Model):
+    """下载历史记录模型"""
+
+    id = db.Column(db.Integer, primary_key=True)
+    album_id = db.Column(db.Integer, db.ForeignKey('album.id'), nullable=False, index=True)
+    export_job_id = db.Column(db.Integer, db.ForeignKey('export_job.id'), nullable=True)
+    album_title = db.Column(db.String(100), nullable=False)
+    zip_filename = db.Column(db.String(200), nullable=False)
+    file_size = db.Column(db.Integer, default=0)
+    photo_count = db.Column(db.Integer, default=0)
+    options = db.Column(JSONType)
+    ip_address = db.Column(db.String(50))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+
+    album = db.relationship('Album', backref=db.backref('download_histories', lazy='dynamic'))
+    export_job = db.relationship('ExportJob', backref=db.backref('download_histories', lazy='dynamic'))
+
+    @property
+    def file_exists(self):
+        from .app import EXPORT_FOLDER
+        if not self.zip_filename:
+            return False
+        import os
+        return os.path.isfile(os.path.join(EXPORT_FOLDER, self.zip_filename))
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'album_id': self.album_id,
+            'export_job_id': self.export_job_id,
+            'album_title': self.album_title,
+            'zip_filename': self.zip_filename,
+            'file_size': self.file_size,
+            'file_size_human': format_bytes_human(self.file_size or 0),
+            'photo_count': self.photo_count,
+            'options': self.options or {},
+            'ip_address': self.ip_address,
+            'created_at': self.created_at.strftime('%Y-%m-%d %H:%M:%S') if self.created_at else None,
+            'file_exists': self.file_exists,
+        }
+
+
+def format_bytes_human(num_bytes):
+    if num_bytes < 1024:
+        return f"{num_bytes} B"
+    elif num_bytes < 1024 * 1024:
+        return f"{num_bytes / 1024:.1f} KB"
+    elif num_bytes < 1024 * 1024 * 1024:
+        return f"{num_bytes / (1024 * 1024):.1f} MB"
+    else:
+        return f"{num_bytes / (1024 * 1024 * 1024):.2f} GB"

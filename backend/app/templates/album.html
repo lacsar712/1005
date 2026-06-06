@@ -20,7 +20,13 @@
             <p class="text-gray-600">{{ album.description or '暂无描述' }}</p>
         </div>
         {% if current_user.is_authenticated %}
-        <div class="flex-shrink-0">
+        <div class="flex-shrink-0 flex items-center gap-2">
+            {% if album.photos %}
+            <button onclick="openExportModal()" class="bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 px-5 py-2.5 rounded-lg shadow-sm transition flex items-center justify-center">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                导出 ZIP
+            </button>
+            {% endif %}
             <a href="{{ url_for('upload_photo', album_id=album.id) }}" class="bg-primary hover:bg-blue-600 text-white px-5 py-2.5 rounded-lg shadow transition flex items-center justify-center">
                 <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
                 上传照片
@@ -477,6 +483,205 @@
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape') {
                 closeTagModal();
+            }
+        });
+    </script>
+    {% endif %}
+
+    {% if current_user.is_authenticated %}
+    <!-- 导出 ZIP 选项弹窗 -->
+    <div id="exportModal" class="fixed inset-0 bg-black/50 z-50 hidden items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col">
+            <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                <h3 class="text-lg font-semibold text-gray-900">导出相册为 ZIP</h3>
+                <button onclick="closeExportModal()" class="text-gray-400 hover:text-gray-600 transition">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <div class="px-6 py-5 space-y-4">
+                <label class="flex items-start p-3 rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition cursor-pointer">
+                    <input type="checkbox" id="optCompressWeb" class="mt-0.5 w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary">
+                    <div class="ml-3">
+                        <div class="text-sm font-medium text-gray-800">压缩为 Web 优化尺寸</div>
+                        <div class="text-xs text-gray-500 mt-0.5">图片长边超过 1920px 时等比缩小，减小文件体积</div>
+                    </div>
+                </label>
+                <label class="flex items-start p-3 rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition cursor-pointer">
+                    <input type="checkbox" id="optIncludeManifest" class="mt-0.5 w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary">
+                    <div class="ml-3">
+                        <div class="text-sm font-medium text-gray-800">附带 manifest.json</div>
+                        <div class="text-xs text-gray-500 mt-0.5">记录每张照片的原始文件名、上传时间与 EXIF 摘要</div>
+                    </div>
+                </label>
+                <label class="flex items-start p-3 rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition cursor-pointer">
+                    <input type="checkbox" id="optGroupByDate" class="mt-0.5 w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary">
+                    <div class="ml-3">
+                        <div class="text-sm font-medium text-gray-800">按上传日期分子目录</div>
+                        <div class="text-xs text-gray-500 mt-0.5">文件按 <code class="bg-gray-100 px-1 rounded">YYYY-MM-DD/</code> 归档整理</div>
+                    </div>
+                </label>
+            </div>
+            <div class="px-6 py-4 border-t border-gray-100 flex justify-end space-x-3">
+                <button type="button" onclick="closeExportModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">取消</button>
+                <button id="exportConfirmBtn" type="button" onclick="startExport()" class="px-4 py-2 bg-primary hover:bg-blue-600 text-white rounded-lg shadow-sm transition flex items-center">
+                    <span id="exportConfirmText">开始导出</span>
+                    <svg id="exportConfirmSpin" class="hidden animate-spin ml-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 导出进度弹窗 -->
+    <div id="exportProgressModal" class="fixed inset-0 bg-black/50 z-50 hidden items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                <h3 class="text-lg font-semibold text-gray-900">正在打包导出</h3>
+            </div>
+            <div class="px-6 py-6">
+                <div id="exportProgressStatus" class="text-sm text-gray-600 mb-3 text-center">准备中...</div>
+                <div class="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
+                    <div id="exportProgressBar" class="bg-primary h-full rounded-full transition-all duration-300" style="width: 0%"></div>
+                </div>
+                <div id="exportProgressText" class="text-xs text-gray-500 mt-2 text-center">0 / 0 张 (0%)</div>
+                <div id="exportDownloadWrap" class="hidden mt-5 text-center">
+                    <a id="exportDownloadLink" href="#" class="inline-flex items-center bg-green-500 hover:bg-green-600 text-white px-6 py-2.5 rounded-lg shadow transition">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                        下载 ZIP 文件
+                    </a>
+                </div>
+                <div id="exportErrorWrap" class="hidden mt-4 p-3 bg-red-50 border border-red-100 rounded-lg text-sm text-red-600 text-center">
+                    导出失败，请稍后重试
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        var ALBUM_ID = {{ album.id }};
+        var exportPollTimer = null;
+
+        function openExportModal() {
+            const modal = document.getElementById('exportModal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeExportModal() {
+            const modal = document.getElementById('exportModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            document.body.style.overflow = '';
+            resetExportConfirm();
+        }
+
+        function resetExportConfirm() {
+            document.getElementById('exportConfirmText').textContent = '开始导出';
+            document.getElementById('exportConfirmSpin').classList.add('hidden');
+            document.getElementById('exportConfirmBtn').disabled = false;
+        }
+
+        function showExportProgress() {
+            const modal = document.getElementById('exportProgressModal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            document.getElementById('exportProgressStatus').textContent = '准备中...';
+            document.getElementById('exportProgressBar').style.width = '0%';
+            document.getElementById('exportProgressText').textContent = '0 / 0 张 (0%)';
+            document.getElementById('exportDownloadWrap').classList.add('hidden');
+            document.getElementById('exportErrorWrap').classList.add('hidden');
+        }
+
+        function closeExportProgress() {
+            const modal = document.getElementById('exportProgressModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            document.body.style.overflow = '';
+            if (exportPollTimer) {
+                clearInterval(exportPollTimer);
+                exportPollTimer = null;
+            }
+        }
+
+        async function startExport() {
+            const btn = document.getElementById('exportConfirmBtn');
+            const btnText = document.getElementById('exportConfirmText');
+            const btnSpin = document.getElementById('exportConfirmSpin');
+            btn.disabled = true;
+            btnText.textContent = '提交中...';
+            btnSpin.classList.remove('hidden');
+
+            const options = {
+                compress_web: document.getElementById('optCompressWeb').checked,
+                include_manifest: document.getElementById('optIncludeManifest').checked,
+                group_by_date: document.getElementById('optGroupByDate').checked
+            };
+
+            try {
+                const resp = await fetch(`/album/${ALBUM_ID}/export`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(options)
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    closeExportModal();
+                    showExportProgress();
+                    pollExportStatus(data.job.id);
+                } else {
+                    Swal.fire({ icon: 'error', title: '导出失败', text: data.message || '请稍后重试' });
+                    resetExportConfirm();
+                }
+            } catch (e) {
+                Swal.fire({ icon: 'error', title: '网络错误', text: '请稍后重试' });
+                resetExportConfirm();
+            }
+        }
+
+        function pollExportStatus(jobId) {
+            if (exportPollTimer) clearInterval(exportPollTimer);
+            exportPollTimer = setInterval(async function() {
+                try {
+                    const resp = await fetch(`/export/${jobId}/status`);
+                    const data = await resp.json();
+                    if (!data.success) return;
+                    const job = data.job;
+
+                    document.getElementById('exportProgressBar').style.width = job.progress + '%';
+                    document.getElementById('exportProgressText').textContent =
+                        `${job.processed_photos} / ${job.total_photos} 张 (${job.progress}%)`;
+
+                    if (job.status === 'pending') {
+                        document.getElementById('exportProgressStatus').textContent = '排队中...';
+                    } else if (job.status === 'processing') {
+                        document.getElementById('exportProgressStatus').textContent = '正在打包照片...';
+                    } else if (job.status === 'completed') {
+                        document.getElementById('exportProgressStatus').textContent = '打包完成！';
+                        document.getElementById('exportProgressBar').style.width = '100%';
+                        document.getElementById('exportDownloadLink').href = `/export/${jobId}/download`;
+                        document.getElementById('exportDownloadWrap').classList.remove('hidden');
+                        clearInterval(exportPollTimer);
+                        exportPollTimer = null;
+                    } else if (job.status === 'failed') {
+                        document.getElementById('exportProgressStatus').textContent = '导出失败';
+                        document.getElementById('exportErrorWrap').classList.remove('hidden');
+                        clearInterval(exportPollTimer);
+                        exportPollTimer = null;
+                    }
+                } catch (e) {}
+            }, 1000);
+        }
+
+        document.getElementById('exportModal').addEventListener('click', function(e) {
+            if (e.target === this) closeExportModal();
+        });
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                if (!document.getElementById('exportModal').classList.contains('hidden')) closeExportModal();
             }
         });
     </script>
