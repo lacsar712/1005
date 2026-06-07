@@ -18,6 +18,8 @@ uploads/*
 !uploads/.gitkeep
 backend/app/static/uploads/*
 !backend/app/static/uploads/.gitkeep
+backend/app/static/exports/*
+!backend/app/static/exports/.gitkeep
 trae/
 prompts.md
 
