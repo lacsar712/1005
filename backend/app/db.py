@@ -286,7 +286,7 @@ class DownloadHistory(db.Model):
 
     @property
     def file_exists(self):
-        from .app import EXPORT_FOLDER
+        from .utils.constants import EXPORT_FOLDER
         if not self.zip_filename:
             return False
         import os
