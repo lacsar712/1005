@@ -3,15 +3,13 @@ import csv
 import os
 import re
 import threading
-import uuid
 from datetime import datetime, timedelta
 from flask import Blueprint, render_template, request, redirect, url_for, flash, abort, make_response, send_file, current_app, jsonify
 from flask_login import login_required, login_user, logout_user, current_user
-from werkzeug.utils import secure_filename
 from sqlalchemy import or_
 
 from ..db import db, Album, Photo, Tag, SiteConfig, OperationLog, ExportJob, DownloadHistory, Notification, WebhookConfig, format_bytes_human
-from ..services import NotificationService, AggregationService, WebhookService, CleanupService
+from ..services import NotificationService, AggregationService, WebhookService, CleanupService, PhotoService
 from ..utils import (
     ADMIN_USERNAME,
     ADMIN_PASSWORD,
@@ -24,11 +22,6 @@ from ..utils import (
     get_site_config,
     get_config_value,
     set_config_value,
-    allowed_file,
-    extract_exif,
-    get_image_format,
-    process_uploaded_locations_async,
-    infer_trips,
     collect_dashboard_stats,
     process_export_job,
 )
@@ -160,54 +153,14 @@ def upload_photo(album_id):
             return redirect(request.url)
 
         files = request.files.getlist('photo')
-        uploaded_count = 0
-
         max_size_bytes = int(get_config_value('max_upload_size_mb')) * 1024 * 1024
 
-        uploaded_photos = []
-
-        for file in files:
-            if file.filename == '':
-                continue
-
-            if file and allowed_file(file.filename):
-                file.seek(0, os.SEEK_END)
-                file_size = file.tell()
-                file.seek(0)
-                if file_size > max_size_bytes:
-                    continue
-
-                original_filename = secure_filename(file.filename)
-                if not original_filename:
-                    original_filename = "未命名图片"
-
-                try:
-                    extension = file.filename.rsplit('.', 1)[1].lower()
-                except IndexError:
-                    continue
-
-                unique_filename = f"{uuid.uuid4().hex}.{extension}"
-
-                saved_path = os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename)
-                file.save(saved_path)
-
-                exif_info = extract_exif(saved_path)
-                img_format = get_image_format(original_filename)
-
-                new_photo = Photo(
-                    filename=unique_filename,
-                    original_filename=original_filename,
-                    album_id=album.id,
-                    camera_model=exif_info['camera_model'],
-                    taken_at=exif_info['taken_at'],
-                    gps_latitude=exif_info['gps_latitude'],
-                    gps_longitude=exif_info['gps_longitude'],
-                    image_format=img_format
-                )
-                db.session.add(new_photo)
-                db.session.flush()
-                uploaded_photos.append(new_photo)
-                uploaded_count += 1
+        uploaded_photos, uploaded_count = PhotoService.save_uploaded_photos(
+            files=files,
+            album_id=album.id,
+            upload_folder=current_app.config['UPLOAD_FOLDER'],
+            max_size_bytes=max_size_bytes,
+        )
 
         if uploaded_count > 0:
             db.session.flush()
@@ -262,7 +215,7 @@ def upload_photo(album_id):
 
             uploaded_ids = [p.id for p in uploaded_photos]
             loc_thread = threading.Thread(
-                target=process_uploaded_locations_async,
+                target=PhotoService.process_uploaded_locations_async,
                 args=(current_app._get_current_object(), uploaded_ids),
                 daemon=True
             )
@@ -739,7 +692,7 @@ def update_photo_location(photo_id):
     t = threading.Thread(target=lambda: (
         None,
         None,
-        infer_trips(photo_ids=[photo.id])
+        PhotoService.infer_trips(photo_ids=[photo.id])
     ), daemon=True)
     t.start()
 

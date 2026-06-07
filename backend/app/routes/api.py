@@ -2,13 +2,12 @@ from flask import Blueprint, jsonify, request
 from flask_login import login_required
 
 from ..db import db, Comment, OperationLog, Notification, WebhookConfig
-from ..services import NotificationService, AggregationService, WebhookService
+from ..services import NotificationService, AggregationService, WebhookService, PhotoService
 from ..utils import (
     log_operation,
     model_snapshot,
     diff_snapshots,
     collect_dashboard_stats,
-    infer_trips,
 )
 
 api_bp = Blueprint('api', __name__)
@@ -53,7 +52,7 @@ def api_admin_dashboard():
 @login_required
 def api_infer_trips():
     try:
-        infer_trips()
+        PhotoService.infer_trips()
         return jsonify({'success': True, 'message': '行程推断完成'})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
