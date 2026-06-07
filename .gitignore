@@ -19,6 +19,7 @@ backend/pydeps/
 data/*.db
 uploads/*
 !uploads/.gitkeep
+backups/
 backend/app/static/uploads/*
 !backend/app/static/uploads/.gitkeep
 backend/app/static/exports/*

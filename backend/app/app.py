@@ -1,8 +1,9 @@
 import os
-from flask import Flask, request, redirect, url_for, flash
+from flask import Flask, request, redirect, url_for, flash, jsonify
 from flask_login import LoginManager, current_user
 
 from .db import db, Album, migrate_schema
+from .health import run_health_checks, ensure_schema_version_recorded
 from .services import (
     NotificationService,
     AggregationService,
@@ -61,6 +62,7 @@ def create_app(config_overrides=None):
         db.create_all()
         migrate_schema()
         init_default_config()
+        ensure_schema_version_recorded()
         max_size_mb = int(get_config_value('max_upload_size_mb'))
         app.config['MAX_CONTENT_LENGTH'] = max_size_mb * 1024 * 1024
         if Album.query.count() == 0:
@@ -86,6 +88,28 @@ def create_app(config_overrides=None):
         max_size = get_config_value('max_upload_size_mb')
         flash(f'上传文件过大，单文件最大允许 {max_size} MB', 'error')
         return redirect(request.referrer or url_for('index'))
+
+    @app.route('/healthz')
+    def healthz():
+        overall_ok, checks = run_health_checks(include_ready=False)
+        status_code = 200 if overall_ok else 503
+        response = jsonify({
+            'status': 'ok' if overall_ok else 'fail',
+            'checks': checks,
+        })
+        response.status_code = status_code
+        return response
+
+    @app.route('/readyz')
+    def readyz():
+        overall_ok, checks = run_health_checks(include_ready=True)
+        status_code = 200 if overall_ok else 503
+        response = jsonify({
+            'status': 'ok' if overall_ok else 'fail',
+            'checks': checks,
+        })
+        response.status_code = status_code
+        return response
 
     app.register_blueprint(public_bp)
     app.register_blueprint(admin_bp)
