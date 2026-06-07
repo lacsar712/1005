@@ -529,13 +529,15 @@ def init_default_config():
             db.session.add(cfg)
     db.session.commit()
 
-def create_app():
+def create_app(config_overrides=None):
     app = Flask(__name__)
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev')
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////app/data/photos.db'
+    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:////app/data/photos.db')
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
     app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5MB 限制
+    if config_overrides:
+        app.config.update(config_overrides)
 
     db.init_app(app)
 
